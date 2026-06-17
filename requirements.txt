@@ -1,0 +1,6 @@
+langchain==0.2.16
+langchain-community==0.2.16
+langgraph==0.2.28
+chromadb==0.5.5
+ollama==0.3.3
+python-dotenv==1.0.1

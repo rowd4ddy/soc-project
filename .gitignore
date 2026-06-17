@@ -1,0 +1,13 @@
+# Python
+__pycache__/
+*.pyc
+.env
+venv/
+
+# Docker volumes and local data
+chroma-data/
+ollama-models/
+
+# OS noise
+.DS_Store
+Thumbs.db
