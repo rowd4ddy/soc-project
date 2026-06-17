@@ -1,0 +1,36 @@
+2024-01-15 08:01:12 INFO sshd[1234]: Accepted password for admin from 192.168.1.10 port 52341 ssh2
+2024-01-15 08:03:45 WARNING sshd[1235]: Failed password for root from 203.0.113.42 port 44231 ssh2
+2024-01-15 08:03:46 WARNING sshd[1235]: Failed password for root from 203.0.113.42 port 44232 ssh2
+2024-01-15 08:03:47 WARNING sshd[1235]: Failed password for root from 203.0.113.42 port 44233 ssh2
+2024-01-15 08:03:48 WARNING sshd[1235]: Failed password for root from 203.0.113.42 port 44234 ssh2
+2024-01-15 08:03:49 WARNING sshd[1235]: Failed password for root from 203.0.113.42 port 44235 ssh2
+2024-01-15 08:03:50 WARNING sshd[1235]: Failed password for root from 203.0.113.42 port 44236 ssh2
+2024-01-15 08:03:51 WARNING sshd[1235]: Failed password for root from 203.0.113.42 port 44237 ssh2
+2024-01-15 08:03:52 WARNING sshd[1235]: Failed password for root from 203.0.113.42 port 44238 ssh2
+2024-01-15 08:03:53 WARNING sshd[1235]: Failed password for root from 203.0.113.42 port 44239 ssh2
+2024-01-15 08:03:54 WARNING sshd[1235]: Failed password for root from 203.0.113.42 port 44240 ssh2
+2024-01-15 08:04:01 CRITICAL sshd[1235]: Accepted password for root from 203.0.113.42 port 44241 ssh2
+2024-01-15 08:15:22 INFO kernel: UFW BLOCK IN=eth0 OUT= SRC=198.51.100.77 DST=10.0.0.5 LEN=60 TOS=0x00 PREC=0x00 TTL=49 ID=12345 DF PROTO=TCP SPT=54321 DPT=22 WINDOW=65535
+2024-01-15 08:17:03 WARNING apache2[5678]: [error] mod_security: Access denied with code 403. Pattern match "union.*select" at REQUEST_URI.
+2024-01-15 08:17:04 WARNING apache2[5678]: [error] mod_security: Access denied with code 403. Pattern match "1=1" at REQUEST_URI.
+2024-01-15 08:17:05 WARNING apache2[5678]: [error] mod_security: Access denied with code 403. Pattern match "drop table" at REQUEST_URI.
+2024-01-15 08:22:10 INFO named[910]: client 10.0.0.20#53412: query: internal.corp.local IN A
+2024-01-15 08:30:05 WARNING kernel: UFW BLOCK IN=eth0 OUT= SRC=203.0.113.42 DST=10.0.0.5 LEN=44 PROTO=TCP DPT=3389
+2024-01-15 08:30:06 WARNING kernel: UFW BLOCK IN=eth0 OUT= SRC=203.0.113.42 DST=10.0.0.5 LEN=44 PROTO=TCP DPT=445
+2024-01-15 08:30:07 WARNING kernel: UFW BLOCK IN=eth0 OUT= SRC=203.0.113.42 DST=10.0.0.5 LEN=44 PROTO=TCP DPT=139
+2024-01-15 08:30:08 WARNING kernel: UFW BLOCK IN=eth0 OUT= SRC=203.0.113.42 DST=10.0.0.5 LEN=44 PROTO=TCP DPT=21
+2024-01-15 08:30:09 WARNING kernel: UFW BLOCK IN=eth0 OUT= SRC=203.0.113.42 DST=10.0.0.5 LEN=44 PROTO=TCP DPT=23
+2024-01-15 08:45:33 INFO cron[2020]: (root) CMD (/usr/local/bin/backup.sh)
+2024-01-15 09:00:01 INFO systemd[1]: Started Session 42 of user deploy.
+2024-01-15 09:12:44 CRITICAL kernel: NETFILTER: possible SYN flood on port 80. Sending cookies. Check SNMP counters.
+2024-01-15 09:15:00 WARNING auditd[500]: AVC avc: denied { write } for pid=3344 comm="python3" name="passwd" dev="sda1" ino=131074 scontext=system_u:system_r:httpd_t tcontext=system_u:object_r:passwd_file_t
+2024-01-15 09:18:21 WARNING sshd[1300]: Invalid user admin from 185.220.101.15 port 39812
+2024-01-15 09:18:22 WARNING sshd[1300]: Invalid user admin from 185.220.101.15 port 39813
+2024-01-15 09:18:23 WARNING sshd[1300]: Invalid user test from 185.220.101.15 port 39814
+2024-01-15 09:18:24 WARNING sshd[1300]: Invalid user guest from 185.220.101.15 port 39815
+2024-01-15 09:18:25 WARNING sshd[1300]: Invalid user oracle from 185.220.101.15 port 39816
+2024-01-15 09:30:14 INFO sudo[4411]: deploy : TTY=pts/0 ; PWD=/var/www ; USER=root ; COMMAND=/bin/systemctl restart nginx
+2024-01-15 09:45:02 CRITICAL auditd[500]: AVC avc: denied { execve } for pid=7821 comm="sh" exe="/tmp/.hidden/rootkit" scontext=system_u:system_r:httpd_t
+2024-01-15 10:00:00 INFO rsyslog[999]: imuxsock: Acquired UNIX socket '/dev/log'
+2024-01-15 10:02:33 WARNING named[910]: client 10.0.0.20: query (cache) denied for 'evil-c2-server.ru'
+2024-01-15 10:05:17 CRITICAL kernel: Out of memory: Kill process 9823 (python3) score 450 or sacrifice child
