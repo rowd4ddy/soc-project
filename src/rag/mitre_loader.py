@@ -132,15 +132,7 @@ MITRE_TECHNIQUES = [
 
 
 def get_chroma_client(host: str = "soc-chroma", port: int = 8000):
-    return chromadb.HttpClient(
-        host=host,
-        port=port,
-        settings=chromadb.Settings(
-            chroma_api_impl="chromadb.api.fastapi.FastAPI",
-            chroma_server_host=host,
-            chroma_server_http_port=port,
-        )
-    )
+    return chromadb.HttpClient(host=host, port=port)
 
 
 def load_mitre_knowledge_base(chroma_host: str = "soc-chroma") -> chromadb.Collection:
