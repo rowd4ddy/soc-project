@@ -1,6 +1,6 @@
 ════════════════════════════════════════════════════════════════════
-  SOC INCIDENT REPORT — INC-20260618-0244
-  Generated : 2026-06-18T02:44:48.955502
+  SOC INCIDENT REPORT — INC-20260618-1431
+  Generated : 2026-06-18T14:31:11.029002
   Overall Threat Level : CRITICAL
 ════════════════════════════════════════════════════════════════════
 
@@ -25,11 +25,11 @@ ATTACK TIMELINE
   2024-01-15T08:03:53  🟠  SSH Brute Force                     src=203.0.113.42
   2024-01-15T08:03:54  🟠  SSH Brute Force                     src=203.0.113.42
   2024-01-15T08:04:01  🔴  Privilege Escalation Attempt        src=203.0.113.42
-  2024-01-15T08:30:05  🟡  Port Scanning / Denial of Service   src=203.0.113.42
-  2024-01-15T08:30:06  🟡  Port Scanning / Denial of Service   src=203.0.113.42
-  2024-01-15T08:30:07  🟡  Port Scanning / Denial of Service   src=203.0.113.42
-  2024-01-15T08:30:08  🟡  Port Scanning / Denial of Service   src=203.0.113.42
-  2024-01-15T08:30:09  🟡  Port Scanning / Denial of Service   src=203.0.113.42
+  2024-01-15T08:30:05  🟡  Port Scanning / Denial of Service Attempt src=203.0.113.42
+  2024-01-15T08:30:06  🟡  Port Scanning / Denial of Service Attempt src=203.0.113.42
+  2024-01-15T08:30:07  🟡  Port Scanning / Denial of Service Attempt src=203.0.113.42
+  2024-01-15T08:30:08  🟡  Port Scanning / Denial of Service Attempt src=203.0.113.42
+  2024-01-15T08:30:09  🟡  Port Scanning / Denial of Service Attempt src=203.0.113.42
   2024-01-15T09:12:44  🔴  SYN Flood Attack                    src=unknown
   2024-01-15T09:18:21  🟡  Brute Force Attack                  src=185.220.101.15
   2024-01-15T09:18:22  🟡  Brute Force Attack                  src=185.220.101.15
@@ -49,18 +49,18 @@ INCIDENT DETAILS
 
   ANALYSIS:
   The incident involved a privilege escalation attempt via password
-  authentication from the source IP address 203.0.113.42, aligning
-  with MITRE T1548 techniques for abuse of elevation control
-  mechanisms. Given the critical threat level and high confidence
-  in this unauthorized access attempt, immediate action is required
-  to block the IP address and investigate further for signs of
-  compromise. Actionable steps include locking the root account,
-  revoking active sessions, and reviewing relevant logs and
-  configurations to ensure no additional damage has occurred or
-  potential vulnerabilities have been exploited.
+  authentication from an unexpected source IP (203.0.113.42), which
+  aligns with MITRE ATT&CK technique T1548 and poses a critical
+  threat level due to potential unauthorized root access. Immediate
+  actions include locking the root account, revoking active
+  sessions, and investigating sudo logs and auth.log for any signs
+  of compromise. Further hardening measures should focus on
+  applying the principle of least privilege by removing unnecessary
+  sudo rights and enabling auditd for comprehensive file system
+  monitoring.
 
   RECOMMENDED ACTION:
-  → Block the IP address 203.0.113.42 and investigate further for any signs of unauthorized access or privilege escalation.
+  → Block the IP address 203.0.113.42 and investigate further for any signs of compromise.
 
 ────────────────────────────────────────────────────────────────────
   [inc-005] 🔴 SYN FLOOD ATTACK
@@ -70,20 +70,17 @@ INCIDENT DETAILS
   Events  : 2 log entries
 
   ANALYSIS:
-  A critical SYN flood attack was detected on port 80, resulting in
-  system memory exhaustion and process termination, indicative of
-  an attempt to overwhelm server resources and disrupt
-  availability. Immediate actions include enabling SYN cookies with
-  `sysctl -w net.ipv4.tcp_syncookies=1` and rate-limiting incoming
-  SYN packets via `iptables -A INPUT -p tcp --syn -m limit --limit
-  1/s --limit-burst 3 -j ACCEPT`. Further investigation is
-  recommended to determine if the attack originates from a single
-  IP address or multiple sources, with immediate blocking of
-  identified IPs and contacting upstream ISPs for traffic scrubbing
-  in the case of distributed attacks.
+  A critical SYN flood attack was detected targeting port 80,
+  indicative of T1498 — Network Denial of Service as per MITRE. The
+  system experienced memory exhaustion and process termination,
+  confirming severe impact on service availability. Immediate
+  actions include enabling SYN cookies and rate-limiting incoming
+  SYN packets to mitigate the attack; isolate the affected machine
+  for further investigation, and consider deploying a CDN or DDoS
+  mitigation service for long-term protection.
 
   RECOMMENDED ACTION:
-  → Implement rate limiting and consider using a firewall rule to block the source IP.
+  → Isolate the affected machine and investigate further for potential vulnerabilities or additional attacks.
 
 ────────────────────────────────────────────────────────────────────
   [inc-008] 🔴 ROOTKIT DEPLOYMENT
@@ -93,20 +90,20 @@ INCIDENT DETAILS
   Events  : 1 log entries
 
   ANALYSIS:
-  The incident involves a rootkit deployment leveraging an AVC
-  denial for execve from a hidden directory, indicative of
-  sophisticated evasion techniques aimed at maintaining
-  persistence. Given the critical threat level and high confidence
-  in our analysis, immediate isolation of the affected machine is
-  imperative to prevent lateral movement and data exfiltration. A
-  thorough forensic analysis should commence with capturing a
-  memory dump before shutting down the system, followed by
-  identifying the malware path and hash, checking for persistence
-  mechanisms, and reviewing processes spawned by web server
-  contexts.
+  The incident involved a rootkit deployment via an AVC denial for
+  execve permission, indicative of sophisticated evasion tactics
+  aimed at maintaining persistence and avoiding detection. Given
+  the critical threat level and high confidence in the analysis,
+  immediate isolation of the affected machine from the network is
+  imperative to prevent lateral movement and data exfiltration.
+  Thorough forensic analysis should commence with a memory dump to
+  preserve evidence, followed by an investigation into potential
+  malware paths and persistence mechanisms, ensuring all processes
+  spawned by web servers are closely examined for signs of
+  compromise.
 
   RECOMMENDED ACTION:
-  → Isolate the affected machine immediately and perform a thorough forensic analysis.
+  → Isolate the affected machine immediately and conduct a thorough forensic analysis.
 
 ────────────────────────────────────────────────────────────────────
   [inc-001] 🟠 SSH BRUTE FORCE
@@ -116,38 +113,44 @@ INCIDENT DETAILS
   Events  : 10 log entries
 
   ANALYSIS:
-  The incident involves a high-threat level brute force attack
-  targeting the root user via SSH, as indicated by multiple failed
-  password attempts from the source IP 203.0.113.42, which aligns
-  with MITRE T1110 technique. Immediate action is required to block
-  this IP at the firewall to prevent potential system compromise
-  and monitor for any successful logins that could indicate a
-  breach. Following the recommended actions will help mitigate the
-  risk and enhance overall security posture.
+  The incident involves an ongoing SSH brute force attack targeting
+  the root user account from a single source IP address
+  (203.0.113.42), which is indicative of a high-threat level and a
+  significant risk to system security due to the privileged nature
+  of the targeted account. Immediate action is required to mitigate
+  this threat by blocking the source IP at the firewall using
+  iptables or UFW, as outlined in the response playbook.
+  Additionally, it is crucial to monitor for any successful logins
+  from this IP address post-failure attempts and to harden SSH
+  security measures by enabling fail2ban, enforcing multi-factor
+  authentication, and disabling root SSH login to prevent future
+  attacks.
 
   RECOMMENDED ACTION:
-  → Block the source IP and monitor for any successful login attempts.
+  → Block the source IP and monitor for any signs of compromise.
 
 ────────────────────────────────────────────────────────────────────
-  [inc-004] 🟡 PORT SCANNING / DENIAL OF SERVICE
+  [inc-004] 🟡 PORT SCANNING / DENIAL OF SERVICE ATTEMPT
   MITRE   : T1046 — Network Service Discovery / Port Scanning
   Source  : 203.0.113.42
   Threat  : MEDIUM  |  Confidence: HIGH
   Events  : 5 log entries
 
   ANALYSIS:
-  The incident involves a medium-threat level port scanning
-  activity from source IP 203.0.113.42, which is attempting to
-  discover open ports on our network through T1046—Network Service
-  Discovery techniques. This behavior indicates an initial
-  reconnaissance phase that could precede more aggressive attacks.
-  Given the repeated blocking attempts and the threat level,
-  immediate action should be taken by blocking this IP at the
-  perimeter firewall and closely monitoring for any subsequent
-  activities.
+  The source IP 203.0.113.42 is engaged in a medium-threat level,
+  high-confidence port scanning and potential Denial of Service
+  (DoS) attempt, consistent with MITRE T1046 Network Service
+  Discovery technique. Immediate action should involve blocking
+  this IP at the network perimeter to prevent further unauthorized
+  access or service disruption. Subsequent steps include
+  investigating any probed ports for signs of exploitation
+  attempts, correlating findings across various log sources, and
+  implementing hardening measures such as closing non-essential
+  ports and enabling intrusion detection system (IDS) signatures
+  for port scan patterns.
 
   RECOMMENDED ACTION:
-  → Block the IP address 203.0.113.42 and monitor for any subsequent activity.
+  → Block the IP address 203.0.113.42 at the network level to prevent further scanning or DoS attacks.
 
 ────────────────────────────────────────────────────────────────────
   [inc-007] 🟡 BRUTE FORCE ATTACK
@@ -157,16 +160,17 @@ INCIDENT DETAILS
   Events  : 5 log entries
 
   ANALYSIS:
-  The incident involved a medium-threat level brute force attack
-  targeting common user accounts such as admin, test, guest, and
-  oracle from the source IP address 185.220.101.15, which was
-  flagged with high confidence due to multiple failed login
-  attempts. Immediate action is recommended by blocking this IP at
-  the firewall using iptables or UFW to prevent further
-  unauthorized access attempts.
+  The incident involved a brute force attack targeting common user
+  accounts such as 'admin', 'test', and 'guest' from the source IP
+  address 185.220.101.15, which is consistent with MITRE
+  T1110—Brute Force technique. Given the multiple failed login
+  attempts and the medium threat level, immediate action is
+  required to mitigate potential unauthorized access. To prevent
+  further attacks, we recommend blocking the source IP address
+  using iptables or UFW as outlined in the response playbook.
 
   RECOMMENDED ACTION:
-  → Block the source IP address 185.220.101.15 to prevent further attacks.
+  → Block the source IP address 185.220.101.15 to prevent further unauthorized access attempts.
 
 ────────────────────────────────────────────────────────────────────
 
@@ -183,7 +187,7 @@ STATISTICS
     SYN Flood Attack                    1
     Rootkit Deployment                  1
     SSH Brute Force                     1
-    Port Scanning / Denial of Service   1
+    Port Scanning / Denial of Service Attempt 1
     Brute Force Attack                  1
 
   Top Attacker IPs:
@@ -194,22 +198,22 @@ STATISTICS
 PRIORITIZED RECOMMENDATIONS
 ────────────────────────────────────────────────────────────────────
   [1] 🔴 Privilege Escalation Attempt
-      → Block the IP address 203.0.113.42 and investigate further for any signs of unauthorized access or privilege escalation.
+      → Block the IP address 203.0.113.42 and investigate further for any signs of compromise.
 
   [2] 🔴 SYN Flood Attack
-      → Implement rate limiting and consider using a firewall rule to block the source IP.
+      → Isolate the affected machine and investigate further for potential vulnerabilities or additional attacks.
 
   [3] 🔴 Rootkit Deployment
-      → Isolate the affected machine immediately and perform a thorough forensic analysis.
+      → Isolate the affected machine immediately and conduct a thorough forensic analysis.
 
   [4] 🟠 SSH Brute Force
-      → Block the source IP and monitor for any successful login attempts.
+      → Block the source IP and monitor for any signs of compromise.
 
-  [5] 🟡 Port Scanning / Denial of Service
-      → Block the IP address 203.0.113.42 and monitor for any subsequent activity.
+  [5] 🟡 Port Scanning / Denial of Service Attempt
+      → Block the IP address 203.0.113.42 at the network level to prevent further scanning or DoS attacks.
 
   [6] 🟡 Brute Force Attack
-      → Block the source IP address 185.220.101.15 to prevent further attacks.
+      → Block the source IP address 185.220.101.15 to prevent further unauthorized access attempts.
 
 ════════════════════════════════════════════════════════════════════
   END OF REPORT
