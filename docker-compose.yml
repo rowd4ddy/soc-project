@@ -1,30 +1,33 @@
-version: "3.9"
-
 services:
-
-  # The AI model server — runs Qwen locally
   ollama:
     image: ollama/ollama
     container_name: soc-ollama
     ports:
       - "11434:11434"
     volumes:
-      - ollama-models:/root/.ollama   # models stored in a Docker volume, not on your PC
+      - ollama-models:/root/.ollama
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
     restart: unless-stopped
 
-  # Your Python project — agents, LangGraph, everything
   app:
     build: .
     container_name: soc-app
     volumes:
-      - ./src:/app/src                # your code folder, live-synced
+      - ./src:/app/src
     environment:
       - OLLAMA_HOST=http://ollama:11434
+      - CHROMA_HOST=soc-chroma
     depends_on:
       - ollama
+      - chromadb
     restart: unless-stopped
 
-  # Vector database for RAG (stores MITRE ATT&CK embeddings etc.)
   chromadb:
     image: chromadb/chroma
     container_name: soc-chroma
@@ -35,5 +38,5 @@ services:
     restart: unless-stopped
 
 volumes:
-  ollama-models:    # where model weights live (4-5 GB for Qwen 2.5 7B)
-  chroma-data:      # where your RAG knowledge base lives
+  ollama-models:
+  chroma-data:

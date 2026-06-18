@@ -5,22 +5,21 @@ Entry point for the SOC multi-agent pipeline.
 
 Currently wired up:
   - Agent 1: Extractor  ✅
+  - Agent 2: Analyzer   ✅
 
 Coming soon:
-  - Agent 2: Analyzer
   - Agent 3: Reporter
   - Agent 4: Executor
-
-The pipeline runs once on startup, then waits.
-This replaces the old one-shot health check and stops Docker's restart loop.
 """
 
 import os
+import sys
 import time
 import logging
 from langgraph.graph import StateGraph, END
 
 from agents.extractor import extractor_node, PipelineState
+from agents.analyzer  import analyzer_node
 from shared.memory import memory
 
 logging.basicConfig(
@@ -34,22 +33,21 @@ logger = logging.getLogger(__name__)
 def build_pipeline() -> StateGraph:
     """
     Build the LangGraph DAG.
-    Right now it only has the Extractor node.
-    We will add Analyzer, Reporter, Executor here in the coming days.
+    Add nodes here as each agent is completed.
     """
     graph = StateGraph(PipelineState)
 
-    # Add nodes (one per agent)
+    # ── Nodes ──────────────────────────────────────────
     graph.add_node("extractor", extractor_node)
-    # graph.add_node("analyzer", analyzer_node)   ← Week 2
+    graph.add_node("analyzer",  analyzer_node)
     # graph.add_node("reporter", reporter_node)   ← Week 3
     # graph.add_node("executor", executor_node)   ← Week 3
 
-    # Define edges (the DAG flow)
+    # ── Edges (DAG flow) ───────────────────────────────
     graph.set_entry_point("extractor")
-    graph.add_edge("extractor", END)
-    # graph.add_edge("extractor", "analyzer")     ← uncomment when Analyzer is ready
-    # graph.add_edge("analyzer",  "reporter")
+    graph.add_edge("extractor", "analyzer")     # Agent 1 → Agent 2
+    graph.add_edge("analyzer",  END)
+    # graph.add_edge("analyzer",  "reporter")   ← uncomment when Reporter ready
     # graph.add_edge("reporter",  "executor")
     # graph.add_edge("executor",  END)
 
@@ -57,7 +55,7 @@ def build_pipeline() -> StateGraph:
 
 
 def run_pipeline():
-    """Run the full agent pipeline once and log the result."""
+    """Run the full agent pipeline once and print a summary."""
     logger.info("════════════════════════════════════════")
     logger.info("  SOC Multi-Agent Pipeline starting     ")
     logger.info("════════════════════════════════════════")
@@ -74,32 +72,41 @@ def run_pipeline():
 
     result = pipeline.invoke(initial_state)
 
-    events = result.get("extracted_events", [])
-    logger.info(f"Pipeline complete — {len(events)} events extracted")
+    # ── Print final summary ────────────────────────────
+    analysis = result.get("analysis_result", {})
+    logger.info("════════════════════════════════════════")
+    logger.info(f"  PIPELINE COMPLETE")
+    logger.info(f"  Overall threat : {analysis.get('overall_threat_level', 'unknown').upper()}")
+    logger.info(f"  Incidents found: {analysis.get('total_incidents', 0)}")
+    logger.info(f"  Confirmed attacks: {analysis.get('confirmed_attacks', 0)}")
+    logger.info("════════════════════════════════════════")
 
-    # Quick severity summary
-    severities = {}
-    for e in events:
-        s = e.get("severity", "unknown")
-        severities[s] = severities.get(s, 0) + 1
-
-    logger.info(f"Severity breakdown: {severities}")
-    logger.info("Shared memory written — ready for Agent 2 (Analyzer)")
+    for inc in analysis.get("incidents", []):
+        if inc.get("confirmed_attack"):
+            logger.info(
+                f"  ⚠  {inc.get('attack_name')} | "
+                f"{inc.get('mitre_technique_id')} | "
+                f"threat={inc.get('threat_level')} | "
+                f"src={inc.get('source_ip')}"
+            )
 
 
 def main():
     """
-    Keeps the container alive permanently.
-    Run the pipeline manually with:
-        docker exec soc-app python src/main.py --run
+    Long-running entry point.
+    Pass --run to execute the pipeline.
+    Without --run the container just stays alive for VS Code attachment.
     """
-    import sys
     if "--run" in sys.argv:
-        run_pipeline()
+        try:
+            run_pipeline()
+        except Exception as e:
+            logger.error(f"Pipeline failed: {e}", exc_info=True)
         logger.info("Pipeline finished. Container staying alive.")
     else:
-        logger.info("SOC container ready. Waiting for instructions...")
+        logger.info("SOC container ready. Run with --run to start the pipeline.")
 
+    # Keep container alive without burning CPU
     while True:
         time.sleep(60)
 
