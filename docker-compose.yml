@@ -20,6 +20,7 @@ services:
     container_name: soc-app
     volumes:
       - ./src:/app/src
+      - onnx-cache:/root/.cache/chroma
     environment:
       - OLLAMA_HOST=http://ollama:11434
       - CHROMA_HOST=soc-chroma
@@ -40,3 +41,4 @@ services:
 volumes:
   ollama-models:
   chroma-data:
+  onnx-cache:
