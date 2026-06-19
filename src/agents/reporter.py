@@ -43,7 +43,9 @@ OLLAMA_HOST  = os.getenv("OLLAMA_HOST", "http://localhost:11434")
 CHROMA_HOST  = os.getenv("CHROMA_HOST", "soc-chroma")
 MODEL        = "qwen2.5:7b"
 OUTPUT_DIR   = os.path.join(os.path.dirname(__file__), "..", "output")
-OUTPUT_FILE  = os.path.join(OUTPUT_DIR, "incident_report.txt")
+def get_output_file() -> str:
+    ts = datetime.now().strftime("%Y%m%d-%H%M%S")
+    return os.path.join(OUTPUT_DIR, f"incident_report_{ts}.txt")
 
 # Severity display helpers
 SEVERITY_EMOJI = {
@@ -385,10 +387,11 @@ def reporter_node(state: PipelineState) -> PipelineState:
     os.makedirs(OUTPUT_DIR, exist_ok=True)
     report_text = render_report_text(report)
 
-    with open(OUTPUT_FILE, "w", encoding="utf-8") as f:
+    output_file = get_output_file()
+    with open(output_file, "w", encoding="utf-8") as f:
         f.write(report_text)
 
-    logger.info(f"✅ Report saved to {OUTPUT_FILE}")
+    logger.info(f"✅ Report saved to {output_file}")
 
     # Step 7: Write to shared memory for Agent 4
     memory.set("report", report)

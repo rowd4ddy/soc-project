@@ -11,3 +11,9 @@ ollama-models/
 # OS noise
 .DS_Store
 Thumbs.db
+
+# Generated reports
+src/output/incident_report_*.txt
+src/output/actions_taken_*.json
+src/output/admin_notifications.txt
+src/output/audit_trail.log
