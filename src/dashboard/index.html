@@ -1,0 +1,215 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>SOC Dashboard</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+  </head>
+  <body class="min-h-screen bg-gray-900 text-gray-100">
+    <div class="mx-auto max-w-7xl p-6">
+      <header class="mb-6 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+        <div>
+          <p class="text-sm uppercase tracking-[0.3em] text-cyan-300">SOC Operations Center</p>
+          <h1 class="text-3xl font-semibold text-white">Live Defense Dashboard</h1>
+          <p class="text-gray-400">Realtime view of defensive actions, severity trends, and audit pipeline events.</p>
+        </div>
+        <div class="rounded-3xl border border-gray-700 bg-gray-950/80 px-4 py-3 text-right text-sm text-gray-300">
+          Auto-refresh every 5 seconds
+        </div>
+      </header>
+
+      <section class="grid gap-4 md:grid-cols-4">
+        <div class="rounded-3xl bg-slate-950/90 p-5 shadow-xl shadow-cyan-500/10">
+          <p class="text-sm uppercase tracking-[0.2em] text-cyan-300">Total Defensive Actions</p>
+          <p id="card-total" class="mt-4 text-4xl font-semibold text-white">0</p>
+        </div>
+        <div class="rounded-3xl bg-slate-950/90 p-5 shadow-xl shadow-emerald-500/10">
+          <p class="text-sm uppercase tracking-[0.2em] text-emerald-300">Simulated Firewall/VLAN</p>
+          <p id="card-simulated" class="mt-4 text-4xl font-semibold text-white">0</p>
+        </div>
+        <div class="rounded-3xl bg-slate-950/90 p-5 shadow-xl shadow-amber-500/10">
+          <p class="text-sm uppercase tracking-[0.2em] text-amber-300">Real Executed Notifications</p>
+          <p id="card-executed" class="mt-4 text-4xl font-semibold text-white">0</p>
+        </div>
+        <div class="rounded-3xl bg-slate-950/90 p-5 shadow-xl shadow-rose-500/10">
+          <p class="text-sm uppercase tracking-[0.2em] text-rose-300">Manual Review Flagged</p>
+          <p id="card-flagged" class="mt-4 text-4xl font-semibold text-white">0</p>
+        </div>
+      </section>
+
+      <section class="mt-6 grid gap-6 lg:grid-cols-3">
+        <div class="lg:col-span-2 rounded-3xl bg-slate-950/90 p-6 shadow-xl shadow-slate-900/30">
+          <div class="mb-4 flex items-center justify-between">
+            <div>
+              <h2 class="text-xl font-semibold text-white">Threat Severity Matrix</h2>
+              <p class="text-sm text-gray-400">Latest incident severity split by attack vectors.</p>
+            </div>
+          </div>
+          <canvas id="severityChart" class="max-h-96"></canvas>
+        </div>
+
+        <div class="rounded-3xl bg-slate-950/90 p-6 shadow-xl shadow-slate-900/30">
+          <div class="mb-4">
+            <h2 class="text-xl font-semibold text-white">Audit Trail</h2>
+            <p class="text-sm text-gray-400">Last 50 pipeline events (newest first).</p>
+          </div>
+          <div class="h-[420px] overflow-y-auto rounded-3xl border border-gray-800 bg-black/20 p-4 text-sm text-gray-100">
+            <pre id="audit-log" class="whitespace-pre-wrap break-words"></pre>
+          </div>
+        </div>
+      </section>
+
+      <section class="mt-6 rounded-3xl bg-slate-950/90 p-6 shadow-xl shadow-slate-900/30">
+        <div class="mb-4 flex items-center justify-between">
+          <div>
+            <h2 class="text-xl font-semibold text-white">Executed Incidents &amp; Mitigations</h2>
+            <p class="text-sm text-gray-400">Recent actions from the latest actions file.</p>
+          </div>
+        </div>
+        <div class="overflow-x-auto">
+          <table class="min-w-full border-separate border-spacing-0 text-left text-sm text-gray-200">
+            <thead class="bg-gray-900/80 text-xs uppercase tracking-[0.2em] text-gray-400">
+              <tr>
+                <th class="border-y border-gray-800 px-4 py-3">Incident ID</th>
+                <th class="border-y border-gray-800 px-4 py-3">Action</th>
+                <th class="border-y border-gray-800 px-4 py-3">Severity</th>
+                <th class="border-y border-gray-800 px-4 py-3">Status</th>
+                <th class="border-y border-gray-800 px-4 py-3">Description</th>
+                <th class="border-y border-gray-800 px-4 py-3">Timestamp</th>
+              </tr>
+            </thead>
+            <tbody id="actions-table" class="divide-y divide-gray-800"></tbody>
+          </table>
+        </div>
+      </section>
+    </div>
+
+    <script>
+      const summaryUrl = '/api/summary';
+      const auditUrl = '/api/audit';
+      const refreshIntervalMs = 5000;
+      const severityLabels = ['Critical', 'High', 'Medium', 'Low'];
+      const severityColors = ['#f87171', '#fbbf24', '#38bdf8', '#34d399'];
+
+      const chartContext = document.getElementById('severityChart').getContext('2d');
+      const severityChart = new Chart(chartContext, {
+        type: 'doughnut',
+        data: {
+          labels: severityLabels,
+          datasets: [{
+            label: 'Severity',
+            data: [0, 0, 0, 0],
+            backgroundColor: severityColors,
+            borderColor: '#0f172a',
+            borderWidth: 2,
+          }],
+        },
+        options: {
+          responsive: true,
+          plugins: {
+            legend: {
+              position: 'bottom',
+              labels: { color: '#cbd5e1' },
+            },
+          },
+        },
+      });
+
+      function setText(id, value) {
+        document.getElementById(id).textContent = value ?? '0';
+      }
+
+      function formatAuditEntry(entry) {
+        if (typeof entry === 'string') {
+          return entry;
+        }
+        if (entry.raw) {
+          return entry.raw;
+        }
+        const parts = [];
+        if (entry.timestamp) parts.push(`[${entry.timestamp}]`);
+        if (entry.event) parts.push(entry.event.toUpperCase());
+        if (entry.incident) parts.push(`Incident: ${entry.incident}`);
+        if (entry.description) parts.push(entry.description);
+        if (entry.action) parts.push(`Action: ${entry.action}`);
+        if (entry.severity) parts.push(`Severity: ${entry.severity}`);
+        return parts.join(' | ');
+      }
+
+      function updateAuditLog(lines) {
+        const target = document.getElementById('audit-log');
+        target.textContent = lines.map(formatAuditEntry).join('\n');
+      }
+
+      function updateActionsTable(actions) {
+        const table = document.getElementById('actions-table');
+        table.innerHTML = '';
+
+        if (!actions.length) {
+          table.innerHTML = `<tr><td class="px-4 py-4 text-gray-400" colspan="6">No actions found in the latest summary.</td></tr>`;
+          return;
+        }
+
+        actions.slice(0, 30).forEach(action => {
+          const row = document.createElement('tr');
+          row.className = 'border-t border-gray-800';
+          const incident = action.incident_id || action.incident || 'N/A';
+          const description = action.description || action.command || action.action || 'N/A';
+          const severity = (action.severity || 'unknown').toString().toUpperCase();
+          const status = (action.status || 'unknown').toString().toUpperCase();
+          const timestamp = action.timestamp || 'N/A';
+
+          row.innerHTML = `
+            <td class="px-4 py-3 align-top text-sm text-gray-200">${incident}</td>
+            <td class="px-4 py-3 align-top text-sm text-gray-200">${action.action || 'N/A'}</td>
+            <td class="px-4 py-3 align-top text-sm text-gray-200">${severity}</td>
+            <td class="px-4 py-3 align-top text-sm text-gray-200">${status}</td>
+            <td class="px-4 py-3 align-top text-sm text-gray-200">${description}</td>
+            <td class="px-4 py-3 align-top text-sm text-gray-200">${timestamp}</td>
+          `;
+          table.appendChild(row);
+        });
+      }
+
+      async function loadSummary() {
+        try {
+          const response = await fetch(summaryUrl, { cache: 'no-store' });
+          if (!response.ok) throw new Error('Failed to fetch summary');
+          const data = await response.json();
+
+          setText('card-total', data.total_actions);
+          setText('card-simulated', data.simulated);
+          setText('card-executed', data.executed);
+          setText('card-flagged', data.flagged);
+
+          severityChart.data.datasets[0].data = [data.critical, data.high, data.medium, data.low];
+          severityChart.update();
+          updateActionsTable(data.actions || []);
+        } catch (error) {
+          console.error('Summary error', error);
+        }
+      }
+
+      async function loadAudit() {
+        try {
+          const response = await fetch(auditUrl, { cache: 'no-store' });
+          if (!response.ok) throw new Error('Failed to fetch audit');
+          const lines = await response.json();
+          updateAuditLog(lines || []);
+        } catch (error) {
+          console.error('Audit error', error);
+          updateAuditLog(['Unable to load audit trail.']);
+        }
+      }
+
+      async function refreshDashboard() {
+        await Promise.all([loadSummary(), loadAudit()]);
+      }
+
+      refreshDashboard();
+      setInterval(refreshDashboard, refreshIntervalMs);
+    </script>
+  </body>
+</html>
