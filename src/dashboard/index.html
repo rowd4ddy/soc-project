@@ -1,215 +1,674 @@
 <!DOCTYPE html>
 <html lang="en">
-  <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>SOC Dashboard</title>
-    <script src="https://cdn.tailwindcss.com"></script>
-    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
-  </head>
-  <body class="min-h-screen bg-gray-900 text-gray-100">
-    <div class="mx-auto max-w-7xl p-6">
-      <header class="mb-6 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
-        <div>
-          <p class="text-sm uppercase tracking-[0.3em] text-cyan-300">SOC Operations Center</p>
-          <h1 class="text-3xl font-semibold text-white">Live Defense Dashboard</h1>
-          <p class="text-gray-400">Realtime view of defensive actions, severity trends, and audit pipeline events.</p>
-        </div>
-        <div class="rounded-3xl border border-gray-700 bg-gray-950/80 px-4 py-3 text-right text-sm text-gray-300">
-          Auto-refresh every 5 seconds
-        </div>
-      </header>
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>SOC Dashboard</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#0a0d10; --panel:#10141a; --panel-2:#0d1117; --line:#1c2229; --line-2:#262e36;
+    --txt:#d6dde3; --txt-dim:#7c8893; --txt-faint:#4a535c;
+    --green:#4ADE80; --green-dim:#1c3a28;
+    --amber:#F0B429; --amber-dim:#3a2e10;
+    --red:#EF4444; --red-dim:#3a1414;
+    --blue:#3B82F6; --blue-dim:#13243f;
+    --mono:'IBM Plex Mono', ui-monospace, monospace;
+    --sans:'Inter', -apple-system, sans-serif;
+  }
+  *{box-sizing:border-box; margin:0; padding:0;}
+  body{
+    background:var(--bg); color:var(--txt); font-family:var(--sans);
+    min-height:100vh; font-size:14px;
+  }
+  ::-webkit-scrollbar{width:8px; height:8px;}
+  ::-webkit-scrollbar-track{background:transparent;}
+  ::-webkit-scrollbar-thumb{background:var(--line-2); border-radius:2px;}
 
-      <section class="grid gap-4 md:grid-cols-4">
-        <div class="rounded-3xl bg-slate-950/90 p-5 shadow-xl shadow-cyan-500/10">
-          <p class="text-sm uppercase tracking-[0.2em] text-cyan-300">Total Defensive Actions</p>
-          <p id="card-total" class="mt-4 text-4xl font-semibold text-white">0</p>
-        </div>
-        <div class="rounded-3xl bg-slate-950/90 p-5 shadow-xl shadow-emerald-500/10">
-          <p class="text-sm uppercase tracking-[0.2em] text-emerald-300">Simulated Firewall/VLAN</p>
-          <p id="card-simulated" class="mt-4 text-4xl font-semibold text-white">0</p>
-        </div>
-        <div class="rounded-3xl bg-slate-950/90 p-5 shadow-xl shadow-amber-500/10">
-          <p class="text-sm uppercase tracking-[0.2em] text-amber-300">Real Executed Notifications</p>
-          <p id="card-executed" class="mt-4 text-4xl font-semibold text-white">0</p>
-        </div>
-        <div class="rounded-3xl bg-slate-950/90 p-5 shadow-xl shadow-rose-500/10">
-          <p class="text-sm uppercase tracking-[0.2em] text-rose-300">Manual Review Flagged</p>
-          <p id="card-flagged" class="mt-4 text-4xl font-semibold text-white">0</p>
-        </div>
-      </section>
+  .topbar{
+    border-bottom:1px solid var(--line); padding:14px 28px;
+    display:flex; align-items:center; justify-content:space-between;
+    position:sticky; top:0; background:rgba(10,13,16,0.92); backdrop-filter:blur(6px); z-index:20;
+  }
+  .brand{display:flex; align-items:center; gap:10px;}
+  .brand-mark{
+    width:8px; height:8px; background:var(--green); flex-shrink:0;
+    box-shadow:0 0 0 3px var(--green-dim);
+    animation:blink 2.4s ease-in-out infinite;
+  }
+  @keyframes blink{0%,100%{opacity:1} 50%{opacity:.35}}
+  .brand h1{font-size:13px; font-weight:600; letter-spacing:.08em; text-transform:uppercase; color:var(--txt);}
+  .brand-sub{font-family:var(--mono); font-size:11px; color:var(--txt-faint); margin-left:6px;}
+  .topbar-right{display:flex; align-items:center; gap:14px;}
+  .tabs{display:flex; gap:2px; background:var(--panel); border:1px solid var(--line); border-radius:3px; padding:2px;}
+  .tab{
+    font-family:var(--mono); font-size:11px; color:var(--txt-faint); padding:5px 12px;
+    border-radius:2px; cursor:pointer; letter-spacing:.03em; transition:all .15s;
+  }
+  .tab:hover{color:var(--txt-dim);}
+  .tab.active{background:var(--line-2); color:var(--txt);}
+  .view{display:none;}
+  .view.active{display:block;}
+  .live-pill{
+    font-family:var(--mono); font-size:11px; color:var(--txt-dim);
+    display:flex; align-items:center; gap:6px; padding:5px 10px;
+    border:1px solid var(--line); border-radius:3px;
+  }
+  .live-pill .led{width:5px; height:5px; border-radius:50%; background:var(--green); animation:blink 1.6s ease-in-out infinite;}
+  .btn{
+    font-family:var(--mono); font-size:11px; color:var(--txt-dim); background:transparent;
+    border:1px solid var(--line); border-radius:3px; padding:6px 12px; cursor:pointer;
+    transition:all .15s; letter-spacing:.03em;
+  }
+  .btn:hover{border-color:var(--line-2); color:var(--txt);}
 
-      <section class="mt-6 grid gap-6 lg:grid-cols-3">
-        <div class="lg:col-span-2 rounded-3xl bg-slate-950/90 p-6 shadow-xl shadow-slate-900/30">
-          <div class="mb-4 flex items-center justify-between">
-            <div>
-              <h2 class="text-xl font-semibold text-white">Threat Severity Matrix</h2>
-              <p class="text-sm text-gray-400">Latest incident severity split by attack vectors.</p>
-            </div>
-          </div>
-          <canvas id="severityChart" class="max-h-96"></canvas>
-        </div>
+  .wrap{max-width:1280px; margin:0 auto; padding:24px 28px 60px;}
 
-        <div class="rounded-3xl bg-slate-950/90 p-6 shadow-xl shadow-slate-900/30">
-          <div class="mb-4">
-            <h2 class="text-xl font-semibold text-white">Audit Trail</h2>
-            <p class="text-sm text-gray-400">Last 50 pipeline events (newest first).</p>
-          </div>
-          <div class="h-[420px] overflow-y-auto rounded-3xl border border-gray-800 bg-black/20 p-4 text-sm text-gray-100">
-            <pre id="audit-log" class="whitespace-pre-wrap break-words"></pre>
-          </div>
-        </div>
-      </section>
+  .kpi-row{display:grid; grid-template-columns:repeat(4,1fr); gap:1px; background:var(--line); border:1px solid var(--line); margin-bottom:24px;}
+  .kpi{background:var(--panel); padding:16px 20px;}
+  .kpi-label{font-family:var(--mono); font-size:10px; letter-spacing:.08em; text-transform:uppercase; color:var(--txt-faint); margin-bottom:10px;}
+  .kpi-value{font-family:var(--mono); font-size:30px; font-weight:600; line-height:1; color:var(--txt);}
+  .kpi-value.green{color:var(--green);}
+  .kpi-value.amber{color:var(--amber);}
+  .kpi-value.red{color:var(--red);}
+  .kpi-sub{font-size:11px; color:var(--txt-faint); margin-top:6px;}
 
-      <section class="mt-6 rounded-3xl bg-slate-950/90 p-6 shadow-xl shadow-slate-900/30">
-        <div class="mb-4 flex items-center justify-between">
-          <div>
-            <h2 class="text-xl font-semibold text-white">Executed Incidents &amp; Mitigations</h2>
-            <p class="text-sm text-gray-400">Recent actions from the latest actions file.</p>
-          </div>
-        </div>
-        <div class="overflow-x-auto">
-          <table class="min-w-full border-separate border-spacing-0 text-left text-sm text-gray-200">
-            <thead class="bg-gray-900/80 text-xs uppercase tracking-[0.2em] text-gray-400">
-              <tr>
-                <th class="border-y border-gray-800 px-4 py-3">Incident ID</th>
-                <th class="border-y border-gray-800 px-4 py-3">Action</th>
-                <th class="border-y border-gray-800 px-4 py-3">Severity</th>
-                <th class="border-y border-gray-800 px-4 py-3">Status</th>
-                <th class="border-y border-gray-800 px-4 py-3">Description</th>
-                <th class="border-y border-gray-800 px-4 py-3">Timestamp</th>
-              </tr>
-            </thead>
-            <tbody id="actions-table" class="divide-y divide-gray-800"></tbody>
-          </table>
-        </div>
-      </section>
+  .grid-2{display:grid; grid-template-columns:1.3fr 1fr; gap:20px; margin-bottom:20px;}
+
+  .panel{background:var(--panel); border:1px solid var(--line); border-radius:4px;}
+  .panel-head{
+    display:flex; align-items:center; justify-content:space-between;
+    padding:13px 18px; border-bottom:1px solid var(--line);
+  }
+  .panel-head h2{font-size:11px; font-weight:600; letter-spacing:.08em; text-transform:uppercase; color:var(--txt-dim);}
+  .panel-head-sub{font-family:var(--mono); font-size:10px; color:var(--txt-faint);}
+  .panel-body{padding:18px;}
+
+  .sev-filters{display:flex; gap:6px;}
+  .sev-chip{
+    font-family:var(--mono); font-size:10px; padding:3px 9px; border-radius:3px;
+    border:1px solid var(--line); color:var(--txt-faint); cursor:pointer; user-select:none;
+    transition:all .15s; letter-spacing:.03em;
+  }
+  .sev-chip:hover{border-color:var(--line-2);}
+  .sev-chip.active{color:var(--bg);}
+  .sev-chip.active[data-sev="critical"]{background:var(--red); border-color:var(--red);}
+  .sev-chip.active[data-sev="high"]{background:var(--amber); border-color:var(--amber);}
+  .sev-chip.active[data-sev="medium"]{background:var(--blue); border-color:var(--blue);}
+  .sev-chip.active[data-sev="low"]{background:var(--green); border-color:var(--green);}
+  .sev-chip.active[data-sev="all"]{background:var(--txt-dim); border-color:var(--txt-dim);}
+
+  table{width:100%; border-collapse:collapse;}
+  thead th{
+    font-family:var(--mono); font-size:10px; letter-spacing:.06em; text-transform:uppercase;
+    color:var(--txt-faint); text-align:left; padding:0 14px 10px; font-weight:500;
+    position:sticky; top:0; background:var(--panel); padding-top:13px; z-index:1;
+  }
+  tbody tr.action-row{border-top:1px solid var(--line); cursor:pointer; transition:background .1s;}
+  tbody tr.action-row:hover{background:var(--panel-2);}
+  tbody td{padding:11px 14px; font-size:12.5px; vertical-align:middle;}
+  td.mono{font-family:var(--mono); color:var(--txt-dim); font-size:11.5px;}
+  .row-incident{font-weight:500; color:var(--txt);}
+  .chevron{color:var(--txt-faint); font-family:var(--mono); font-size:11px; transition:transform .15s; display:inline-block;}
+  tr.expanded .chevron{transform:rotate(90deg);}
+  .detail-row td{padding:0; border-top:none;}
+  .detail-inner{
+    background:var(--panel-2); border-left:2px solid var(--line-2);
+    margin:0 14px 12px; padding:14px 16px; font-size:12.5px; color:var(--txt-dim); line-height:1.6;
+    display:none;
+  }
+  .detail-inner.show{display:block;}
+  .detail-inner .lbl{font-family:var(--mono); font-size:10px; text-transform:uppercase; letter-spacing:.06em; color:var(--txt-faint); margin-bottom:4px; margin-top:10px;}
+  .detail-inner .lbl:first-child{margin-top:0;}
+  .detail-inner code{font-family:var(--mono); background:var(--bg); padding:1px 6px; border-radius:2px; color:var(--green); font-size:11.5px;}
+
+  .badge{
+    font-family:var(--mono); font-size:10px; font-weight:600; padding:2px 8px; border-radius:2px;
+    letter-spacing:.03em; display:inline-block;
+  }
+  .badge-critical{background:var(--red-dim); color:var(--red);}
+  .badge-high{background:var(--amber-dim); color:var(--amber);}
+  .badge-medium{background:var(--blue-dim); color:var(--blue);}
+  .badge-low{background:var(--green-dim); color:var(--green);}
+  .badge-simulated{background:var(--amber-dim); color:var(--amber);}
+  .badge-executed{background:var(--green-dim); color:var(--green);}
+  .badge-flagged{background:var(--red-dim); color:var(--red);}
+  .badge-skipped{background:var(--line); color:var(--txt-faint);}
+  .badge-unknown{background:var(--line); color:var(--txt-faint);}
+
+  .sev-bars{display:flex; flex-direction:column; gap:14px;}
+  .sev-bar-row{display:flex; flex-direction:column; gap:5px;}
+  .sev-bar-top{display:flex; align-items:baseline; justify-content:space-between;}
+  .sev-bar-label{font-family:var(--mono); font-size:11px; letter-spacing:.05em; text-transform:uppercase;}
+  .sev-bar-label.critical{color:var(--red);} .sev-bar-label.high{color:var(--amber);}
+  .sev-bar-label.medium{color:var(--blue);} .sev-bar-label.low{color:var(--green);}
+  .sev-bar-count{font-family:var(--mono); font-size:13px; color:var(--txt); font-weight:600;}
+  .sev-bar-pct{font-family:var(--mono); font-size:10.5px; color:var(--txt-faint); margin-left:6px;}
+  .sev-bar-track{height:6px; background:var(--panel-2); border-radius:3px; overflow:hidden;}
+  .sev-bar-fill{height:100%; border-radius:3px; transition:width .4s ease;}
+  .sev-bar-fill.critical{background:var(--red);} .sev-bar-fill.high{background:var(--amber);}
+  .sev-bar-fill.medium{background:var(--blue);} .sev-bar-fill.low{background:var(--green);}
+  .sev-bar-meta{font-size:10.5px; color:var(--txt-faint); margin-top:1px;}
+  .sev-bar-meta code{font-family:var(--mono); color:var(--txt-dim);}
+  .sev-empty-note{font-size:11.5px; color:var(--txt-faint); padding:30px 0; text-align:center;}
+
+  .table-scroll{min-height:340px; max-height:340px; overflow-y:auto;}
+
+  .btn.pulsing{border-color:var(--green); color:var(--green);}
+
+  .audit-feed{font-family:var(--mono); font-size:11.5px; line-height:1.9; max-height:420px; overflow-y:auto;}
+  .audit-line{display:flex; gap:10px; padding:2px 0;}
+  .audit-line .t{color:var(--txt-faint); flex-shrink:0;}
+  .audit-line .tag{flex-shrink:0; min-width:64px;}
+  .audit-line .tag.warn{color:var(--amber);}
+  .audit-line .tag.ok{color:var(--green);}
+  .audit-line .tag.err{color:var(--red);}
+  .audit-line .tag.info{color:var(--txt-faint);}
+  .audit-line .msg{color:var(--txt-dim); word-break:break-word;}
+  .audit-line-new{animation:feedIn .5s ease-out;}
+  @keyframes feedIn{from{opacity:0; transform:translateY(-4px);} to{opacity:1; transform:translateY(0);}}
+  .cursor{display:inline-block; width:7px; height:13px; background:var(--green); animation:blink 1s steps(1) infinite; vertical-align:-2px;}
+
+  .empty{padding:60px 20px; text-align:center; color:var(--txt-faint);}
+  .empty .big{font-family:var(--mono); font-size:13px; color:var(--txt-dim); margin-bottom:8px;}
+  .empty code{font-family:var(--mono); background:var(--panel-2); border:1px solid var(--line); padding:3px 8px; border-radius:3px; color:var(--green); font-size:11.5px;}
+
+  .legend{display:flex; gap:16px; font-family:var(--mono); font-size:10.5px; color:var(--txt-faint); margin-top:14px; flex-wrap:wrap;}
+  .legend span{display:inline-flex; align-items:center; gap:5px;}
+  .legend i{width:8px; height:8px; border-radius:2px; display:inline-block;}
+
+  .exec-grid{display:grid; grid-template-columns:repeat(4,1fr); gap:1px; background:var(--line); border:1px solid var(--line); margin-bottom:20px;}
+  .exec-cell{background:var(--panel); padding:14px 18px;}
+  .exec-label{font-family:var(--mono); font-size:10px; letter-spacing:.07em; text-transform:uppercase; color:var(--txt-faint); margin-bottom:8px;}
+  .exec-val{font-size:14px; font-weight:500; color:var(--txt);}
+  .exec-val.mono{font-family:var(--mono);}
+
+  .tl-track{position:relative; padding-left:18px;}
+  .tl-track::before{content:''; position:absolute; left:4px; top:4px; bottom:4px; width:1px; background:var(--line-2);}
+  .tl-item{position:relative; padding:8px 0 8px 16px;}
+  .tl-item::before{content:''; position:absolute; left:-19px; top:13px; width:7px; height:7px; border-radius:50%; background:var(--dot,var(--green)); box-shadow:0 0 0 3px var(--bg);}
+  .tl-time{font-family:var(--mono); font-size:11px; color:var(--txt-faint); margin-right:10px;}
+  .tl-name{font-size:12.5px; color:var(--txt);}
+  .tl-ip{font-family:var(--mono); font-size:11px; color:var(--txt-faint); margin-left:8px;}
+
+  .inc-card{border:1px solid var(--line); border-radius:4px; margin-bottom:12px; overflow:hidden;}
+  .inc-head{
+    display:flex; align-items:center; justify-content:space-between; padding:13px 16px;
+    cursor:pointer; transition:background .1s; border-left:3px solid var(--dot,var(--green));
+  }
+  .inc-head:hover{background:var(--panel-2);}
+  .inc-head-left{display:flex; align-items:center; gap:12px;}
+  .inc-name{font-size:13px; font-weight:500; color:var(--txt);}
+  .inc-meta{font-family:var(--mono); font-size:11px; color:var(--txt-faint);}
+  .inc-body{
+    display:none; padding:16px; border-top:1px solid var(--line); background:var(--panel-2);
+    font-size:12.5px; line-height:1.7; color:var(--txt-dim);
+  }
+  .inc-body.show{display:block;}
+  .inc-body .lbl{font-family:var(--mono); font-size:10px; text-transform:uppercase; letter-spacing:.06em; color:var(--txt-faint); margin-bottom:5px; margin-top:14px;}
+  .inc-body .lbl:first-child{margin-top:0;}
+  .inc-body .action-box{
+    background:var(--green-dim); border-left:2px solid var(--green); padding:8px 12px;
+    color:var(--green); font-size:12px; margin-top:5px;
+  }
+
+  .rec-row{display:flex; align-items:center; gap:14px; padding:10px 16px; border-top:1px solid var(--line); font-size:12.5px;}
+  .rec-row:first-child{border-top:none;}
+  .rec-num{font-family:var(--mono); color:var(--txt-faint); width:18px; flex-shrink:0;}
+  .rec-for{font-weight:500; color:var(--txt); width:200px; flex-shrink:0;}
+  .rec-action{color:var(--txt-dim); flex:1;}
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <div class="brand">
+    <div class="brand-mark"></div>
+    <h1>SOC // Operations</h1>
+    <span class="brand-sub" id="report-id">awaiting data</span>
+  </div>
+  <div class="topbar-right">
+    <div class="tabs" id="tabs">
+      <span class="tab active" data-tab="ops">operations</span>
+      <span class="tab" data-tab="report">incident report</span>
+    </div>
+    <span class="live-pill"><span class="led"></span><span id="last-updated">auto-refresh 5s</span></span>
+    <button class="btn" id="refresh-btn" onclick="refreshAll()">↻ refresh now</button>
+  </div>
+</div>
+
+<div class="wrap">
+  <div class="view active" id="view-ops">
+    <div class="empty">
+      <div class="big">connecting to pipeline output…</div>
+    </div>
+  </div>
+  <div class="view" id="view-report">
+    <div class="empty">
+      <div class="big">connecting to pipeline output…</div>
+    </div>
+  </div>
+</div>
+
+<script>
+let activeFilter = 'all';
+let lastActions = [];
+
+function esc(s){ return (s===undefined||s===null) ? '' : String(s).replace(/[&<>]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;'}[c])); }
+
+function fmtTime(ts){
+  if(!ts) return '--:--:--';
+  const d = new Date(ts);
+  if(isNaN(d)) return (ts+'').slice(11,19) || ts;
+  return d.toTimeString().slice(0,8);
+}
+
+function badgeClass(label){
+  const k = (label||'unknown').toLowerCase();
+  return ['critical','high','medium','low','simulated','executed','flagged','skipped'].includes(k) ? k : 'unknown';
+}
+
+function badge(label){
+  const cls = badgeClass(label);
+  return `<span class="badge badge-${cls}">${esc((label||'unknown').toUpperCase())}</span>`;
+}
+
+async function fetchJSON(url){
+  const r = await fetch(url, {cache:'no-store'});
+  if(!r.ok) throw new Error('fetch failed: '+url);
+  return r.json();
+}
+
+function renderShell(){
+  document.getElementById('view-ops').innerHTML = `
+    <div class="kpi-row">
+      <div class="kpi">
+        <div class="kpi-label">Total actions</div>
+        <div class="kpi-value" id="k-total">0</div>
+        <div class="kpi-sub">across all incidents</div>
+      </div>
+      <div class="kpi">
+        <div class="kpi-label">Simulated</div>
+        <div class="kpi-value amber" id="k-sim">0</div>
+        <div class="kpi-sub">firewall / VLAN rules</div>
+      </div>
+      <div class="kpi">
+        <div class="kpi-label">Executed (real)</div>
+        <div class="kpi-value green" id="k-exec">0</div>
+        <div class="kpi-sub">notifications dispatched</div>
+      </div>
+      <div class="kpi">
+        <div class="kpi-label">Flagged for review</div>
+        <div class="kpi-value red" id="k-flag">0</div>
+        <div class="kpi-sub">no automated handler</div>
+      </div>
     </div>
 
-    <script>
-      const summaryUrl = '/api/summary';
-      const auditUrl = '/api/audit';
-      const refreshIntervalMs = 5000;
-      const severityLabels = ['Critical', 'High', 'Medium', 'Low'];
-      const severityColors = ['#f87171', '#fbbf24', '#38bdf8', '#34d399'];
+    <div class="grid-2">
+      <div class="panel">
+        <div class="panel-head">
+          <h2>Severity breakdown</h2>
+          <span class="panel-head-sub" id="sev-total-sub">0 actions</span>
+        </div>
+        <div class="panel-body">
+          <div class="sev-bars" id="sev-bars"></div>
+        </div>
+      </div>
 
-      const chartContext = document.getElementById('severityChart').getContext('2d');
-      const severityChart = new Chart(chartContext, {
-        type: 'doughnut',
-        data: {
-          labels: severityLabels,
-          datasets: [{
-            label: 'Severity',
-            data: [0, 0, 0, 0],
-            backgroundColor: severityColors,
-            borderColor: '#0f172a',
-            borderWidth: 2,
-          }],
-        },
-        options: {
-          responsive: true,
-          plugins: {
-            legend: {
-              position: 'bottom',
-              labels: { color: '#cbd5e1' },
-            },
-          },
-        },
-      });
+      <div class="panel">
+        <div class="panel-head">
+          <h2>Live audit feed</h2>
+          <span class="panel-head-sub" id="audit-count-sub">last 50 events</span>
+        </div>
+        <div class="panel-body">
+          <div class="audit-feed" id="audit-feed"></div>
+        </div>
+      </div>
+    </div>
 
-      function setText(id, value) {
-        document.getElementById(id).textContent = value ?? '0';
+    <div class="panel">
+      <div class="panel-head">
+        <h2>Executed incidents &amp; mitigations</h2>
+        <div class="sev-filters" id="sev-filters">
+          <span class="sev-chip active" data-sev="all">ALL</span>
+          <span class="sev-chip" data-sev="critical">CRIT</span>
+          <span class="sev-chip" data-sev="high">HIGH</span>
+          <span class="sev-chip" data-sev="medium">MED</span>
+          <span class="sev-chip" data-sev="low">LOW</span>
+        </div>
+      </div>
+      <div class="table-scroll">
+        <table>
+          <thead>
+            <tr>
+              <th style="width:18px;"></th>
+              <th>Incident</th>
+              <th>Action</th>
+              <th>Severity</th>
+              <th>Status</th>
+              <th>Time</th>
+            </tr>
+          </thead>
+          <tbody id="action-rows"></tbody>
+        </table>
+      </div>
+    </div>
+  `;
+
+  document.querySelectorAll('.sev-chip').forEach(chip => {
+    chip.addEventListener('click', () => {
+      activeFilter = chip.dataset.sev;
+      document.querySelectorAll('.sev-chip').forEach(c => c.classList.remove('active'));
+      chip.classList.add('active');
+      renderActions();
+    });
+  });
+}
+
+function renderSeverityBars(sevData, actions){
+  const el = document.getElementById('sev-bars');
+  const labels = ['critical','high','medium','low'];
+  const total = sevData.reduce((a,b)=>a+b,0);
+
+  if(total === 0){
+    el.innerHTML = `<div class="sev-empty-note">no actions recorded yet</div>`;
+    return;
+  }
+
+  el.innerHTML = labels.map((sev, i) => {
+    const count = sevData[i];
+    const pct = total ? Math.round((count/total)*100) : 0;
+    // find the most common incident name at this severity for context
+    const atSev = actions.filter(a => (a.severity||'').toLowerCase() === sev);
+    const sample = atSev[0];
+    const metaText = sample
+      ? `most recent: <code>${esc(sample.incident_id || sample.incident || '—')}</code> — ${esc((sample.action||'').replace(/_/g,' '))}`
+      : 'none recorded';
+    return `
+      <div class="sev-bar-row" data-sev="${sev}" style="cursor:pointer;">
+        <div class="sev-bar-top">
+          <span class="sev-bar-label ${sev}">${sev}</span>
+          <span><span class="sev-bar-count">${count}</span><span class="sev-bar-pct">${pct}%</span></span>
+        </div>
+        <div class="sev-bar-track"><div class="sev-bar-fill ${sev}" style="width:${pct}%"></div></div>
+        <div class="sev-bar-meta">${metaText}</div>
+      </div>`;
+  }).join('');
+
+  document.querySelectorAll('.sev-bar-row').forEach(row => {
+    row.addEventListener('click', () => {
+      const sev = row.dataset.sev;
+      const chip = document.querySelector(`.sev-chip[data-sev="${sev}"]`);
+      if(chip) chip.click();
+    });
+  });
+}
+
+function renderActions(){
+  const tbody = document.getElementById('action-rows');
+  const filtered = activeFilter === 'all'
+    ? lastActions
+    : lastActions.filter(a => (a.severity||'').toLowerCase() === activeFilter);
+
+  if(!filtered.length){
+    tbody.innerHTML = `<tr><td colspan="6" style="padding:30px; text-align:center; color:var(--txt-faint); font-family:var(--mono); font-size:12px;">no actions match this filter</td></tr>`;
+    return;
+  }
+
+  tbody.innerHTML = filtered.map((a, i) => {
+    const sev = (a.severity||'low').toLowerCase();
+    const status = (a.status||'unknown');
+    const inc = a.incident_id || a.incident || 'N/A';
+    const desc = a.description || a.command || a.action || '';
+    return `
+      <tr class="action-row" data-idx="${i}">
+        <td class="chevron">&#9656;</td>
+        <td class="mono row-incident">${esc(inc)}</td>
+        <td>${esc(a.action || 'N/A')}</td>
+        <td>${badge(sev)}</td>
+        <td>${badge(status)}</td>
+        <td class="mono">${fmtTime(a.timestamp)}</td>
+      </tr>
+      <tr class="detail-row"><td colspan="6">
+        <div class="detail-inner" id="detail-${i}">
+          <div class="lbl">Description</div>
+          <div>${esc(desc) || '&mdash;'}</div>
+          ${a.command ? `<div class="lbl">Command</div><div><code>${esc(a.command)}</code></div>` : ''}
+          ${a.target_ip ? `<div class="lbl">Target IP</div><div><code>${esc(a.target_ip)}</code></div>` : ''}
+          ${a.recommendation ? `<div class="lbl">Recommendation</div><div>${esc(a.recommendation)}</div>` : ''}
+        </div>
+      </td></tr>
+    `;
+  }).join('');
+
+  document.querySelectorAll('.action-row').forEach(row => {
+    row.addEventListener('click', () => {
+      const idx = row.dataset.idx;
+      const detail = document.getElementById('detail-'+idx);
+      const isOpen = detail.classList.contains('show');
+      document.querySelectorAll('.detail-inner.show').forEach(d => d.classList.remove('show'));
+      document.querySelectorAll('tr.expanded').forEach(r => r.classList.remove('expanded'));
+      if(!isOpen){
+        detail.classList.add('show');
+        row.classList.add('expanded');
       }
+    });
+  });
+}
 
-      function formatAuditEntry(entry) {
-        if (typeof entry === 'string') {
-          return entry;
-        }
-        if (entry.raw) {
-          return entry.raw;
-        }
-        const parts = [];
-        if (entry.timestamp) parts.push(`[${entry.timestamp}]`);
-        if (entry.event) parts.push(entry.event.toUpperCase());
-        if (entry.incident) parts.push(`Incident: ${entry.incident}`);
-        if (entry.description) parts.push(entry.description);
-        if (entry.action) parts.push(`Action: ${entry.action}`);
-        if (entry.severity) parts.push(`Severity: ${entry.severity}`);
-        return parts.join(' | ');
+function classifyAuditTag(entry){
+  const ev = (entry.event||'').toLowerCase();
+  const status = (entry.status||'').toLowerCase();
+  if(status === 'flagged' || ev.includes('fail')) return ['ERROR','err'];
+  if(status === 'simulated' || ev.includes('recommend')) return ['WARN','warn'];
+  if(status === 'executed' || ev.includes('complete') || ev.includes('notif')) return ['OK','ok'];
+  return ['INFO','info'];
+}
+
+function renderAudit(entries, hasNew){
+  const el = document.getElementById('audit-feed');
+  if(!entries.length){
+    el.innerHTML = `<div style="color:var(--txt-faint); padding:20px 0;">no audit entries yet — run the pipeline<span class="cursor"></span></div>`;
+    return;
+  }
+  const shown = entries.slice(0, 50);
+  const rows = shown.map((e, i) => {
+    const [tag, cls] = classifyAuditTag(e);
+    const msg = e.raw || e.description || e.action || e.event || JSON.stringify(e);
+    const incident = e.incident ? `${esc(e.incident)}: ` : '';
+    // Only the newest entries (those above the previously-known count) get the
+    // fade-in treatment — older entries render instantly so we don't replay
+    // the whole feed every poll.
+    const isNew = hasNew && i < (shown.length - lastAuditCount);
+    const fadeClass = isNew ? 'audit-line-new' : '';
+    return `<div class="audit-line ${fadeClass}"><span class="t">${fmtTime(e.timestamp)}</span><span class="tag ${cls}">[${tag}]</span><span class="msg">${incident}${esc(msg)}</span></div>`;
+  }).join('');
+  el.innerHTML = rows + `<div class="audit-line"><span class="t">${fmtTime(new Date().toISOString())}</span><span class="tag info">[IDLE]</span><span class="msg">listening for next event<span class="cursor"></span></span></div>`;
+}
+
+let lastAuditCount = 0;
+
+async function refreshAll(){
+  const btn = document.getElementById('refresh-btn');
+  btn?.classList.add('pulsing');
+
+  try{
+    const summary = await fetchJSON('/api/summary');
+    const audit = await fetchJSON('/api/audit').catch(() => []);
+
+    document.getElementById('report-id').textContent = `${summary.total_actions || 0} actions logged`;
+
+    document.getElementById('k-total').textContent = summary.total_actions ?? 0;
+    document.getElementById('k-sim').textContent = summary.simulated ?? 0;
+    document.getElementById('k-exec').textContent = summary.executed ?? 0;
+    document.getElementById('k-flag').textContent = summary.flagged ?? 0;
+
+    const sevData = [summary.critical||0, summary.high||0, summary.medium||0, summary.low||0];
+    lastActions = summary.actions || [];
+    renderSeverityBars(sevData, lastActions);
+    document.getElementById('sev-total-sub').textContent = `${sevData.reduce((a,b)=>a+b,0)} actions`;
+
+    renderActions();
+
+    // Detect new audit entries since last poll — feeds them in one at a time
+    // instead of snapping the whole list in, so it reads as a live stream.
+    const newCount = (audit || []).length;
+    const hasNew = newCount !== lastAuditCount;
+    lastAuditCount = newCount;
+    renderAudit(audit || [], hasNew);
+
+    document.getElementById('audit-count-sub').textContent =
+      `last ${Math.min(newCount,50)} events`;
+
+    setLastUpdated(true);
+  }catch(e){
+    document.getElementById('view-ops').innerHTML = `
+      <div class="empty">
+        <div class="big">no pipeline output found</div>
+        <p style="margin-top:6px; font-size:12px;">run the pipeline first:</p>
+        <p style="margin-top:8px;"><code>docker exec soc-app python src/main.py --run</code></p>
+      </div>`;
+    setLastUpdated(false);
+  }
+
+  try{
+    const report = await fetchJSON('/api/report');
+    renderReport(report);
+  }catch(e){
+    document.getElementById('view-report').innerHTML = `
+      <div class="empty">
+        <div class="big">no incident report found</div>
+        <p style="margin-top:6px; font-size:12px;">run the pipeline first, then refresh:</p>
+        <p style="margin-top:8px;"><code>docker exec soc-app python src/main.py --run</code></p>
+      </div>`;
+  }
+
+  setTimeout(() => btn?.classList.remove('pulsing'), 400);
+}
+
+function setLastUpdated(ok){
+  const el = document.getElementById('last-updated');
+  if(!el) return;
+  const now = new Date();
+  const t = now.toTimeString().slice(0,8);
+  el.textContent = ok ? `updated ${t}` : `no data — ${t}`;
+}
+
+function sevDotColor(sev){
+  return {critical:'#EF4444', high:'#F0B429', medium:'#3B82F6', low:'#4ADE80'}[(sev||'low').toLowerCase()] || '#4ADE80';
+}
+
+function renderReport(report){
+  const es   = report.executive_summary || {};
+  const incs = report.incidents || [];
+  const tl   = report.timeline || [];
+  const recs = report.recommendations || [];
+
+  const tlHtml = tl.length ? tl.slice(0, 20).map(e => `
+    <div class="tl-item" style="--dot:${sevDotColor(e.severity)}">
+      <span class="tl-time">${fmtTime(e.timestamp)}</span>
+      <span class="tl-name">${esc(e.attack_name || e.event_type || '—')}</span>
+      <span class="tl-ip">${esc(e.source_ip||'')}</span>
+    </div>`).join('') : `<div style="color:var(--txt-faint); font-size:12px; padding:8px 0;">no timeline events</div>`;
+
+  const incHtml = incs.length ? incs.map((inc, i) => `
+    <div class="inc-card">
+      <div class="inc-head" style="--dot:${sevDotColor(inc.threat_level)}" data-inc="${i}">
+        <div class="inc-head-left">
+          <span class="chevron">&#9656;</span>
+          <span class="inc-name">${esc(inc.attack_name || inc.event_type || 'Unknown attack')}</span>
+        </div>
+        <div class="inc-head-left">
+          <span class="inc-meta">${esc(inc.mitre_technique_id||'')}</span>
+          <span class="inc-meta">${esc(inc.source_ip||'unknown')}</span>
+          ${badge(inc.threat_level)}
+        </div>
+      </div>
+      <div class="inc-body" id="inc-body-${i}">
+        <div class="lbl">MITRE technique</div>
+        <div>${esc(inc.mitre_technique_id||'—')} &mdash; ${esc(inc.mitre_technique_name||'unknown')}</div>
+        <div class="lbl">Confidence</div>
+        <div>${esc((inc.confidence||'unknown').toUpperCase())}</div>
+        <div class="lbl">Analyst narrative</div>
+        <div>${esc(inc.narrative || inc.explanation || 'No narrative available.')}</div>
+        <div class="lbl">Recommended action</div>
+        <div class="action-box">${esc(inc.recommended_action || 'Manual investigation required.')}</div>
+      </div>
+    </div>`).join('') : `<div style="color:var(--txt-faint); font-size:12px;">no confirmed incidents</div>`;
+
+  const recHtml = recs.length ? recs.map(r => `
+    <div class="rec-row">
+      <span class="rec-num">${esc(r.priority)}</span>
+      <span class="rec-for">${esc(r.for||'—')}</span>
+      ${badge(r.severity)}
+      <span class="rec-action">${esc(r.action||'—')}</span>
+    </div>`).join('') : `<div style="color:var(--txt-faint); font-size:12px; padding:14px 16px;">no recommendations</div>`;
+
+  document.getElementById('view-report').innerHTML = `
+    <div class="exec-grid">
+      <div class="exec-cell">
+        <div class="exec-label">Threat level</div>
+        <div class="exec-val">${badge(es.threat_level)}</div>
+      </div>
+      <div class="exec-cell">
+        <div class="exec-label">Confirmed attacks</div>
+        <div class="exec-val mono">${esc(es.confirmed_attacks ?? 0)}</div>
+      </div>
+      <div class="exec-cell">
+        <div class="exec-label">Critical / high</div>
+        <div class="exec-val mono">${esc(es.critical_count ?? 0)} / ${esc(es.high_count ?? 0)}</div>
+      </div>
+      <div class="exec-cell">
+        <div class="exec-label">Top attacker</div>
+        <div class="exec-val mono">${esc(es.top_source_ip||'unknown')}</div>
+      </div>
+    </div>
+
+    <div class="grid-2">
+      <div class="panel">
+        <div class="panel-head"><h2>Confirmed incidents</h2><span class="panel-head-sub">${incs.length} total</span></div>
+        <div class="panel-body">${incHtml}</div>
+      </div>
+      <div class="panel">
+        <div class="panel-head"><h2>Attack timeline</h2><span class="panel-head-sub">${tl.length} events</span></div>
+        <div class="panel-body"><div class="tl-track">${tlHtml}</div></div>
+      </div>
+    </div>
+
+    <div class="panel">
+      <div class="panel-head"><h2>Prioritized recommendations</h2></div>
+      ${recHtml}
+    </div>
+  `;
+
+  document.querySelectorAll('.inc-head').forEach(head => {
+    head.addEventListener('click', () => {
+      const idx = head.dataset.inc;
+      const body = document.getElementById('inc-body-'+idx);
+      const isOpen = body.classList.contains('show');
+      document.querySelectorAll('.inc-body.show').forEach(b => b.classList.remove('show'));
+      document.querySelectorAll('.inc-head .chevron').forEach(c => c.style.transform = '');
+      if(!isOpen){
+        body.classList.add('show');
+        head.querySelector('.chevron').style.transform = 'rotate(90deg)';
       }
+    });
+  });
+}
 
-      function updateAuditLog(lines) {
-        const target = document.getElementById('audit-log');
-        target.textContent = lines.map(formatAuditEntry).join('\n');
-      }
+document.querySelectorAll('.tab').forEach(tab => {
+  tab.addEventListener('click', () => {
+    document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+    document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
+    tab.classList.add('active');
+    document.getElementById('view-'+tab.dataset.tab).classList.add('active');
+  });
+});
 
-      function updateActionsTable(actions) {
-        const table = document.getElementById('actions-table');
-        table.innerHTML = '';
-
-        if (!actions.length) {
-          table.innerHTML = `<tr><td class="px-4 py-4 text-gray-400" colspan="6">No actions found in the latest summary.</td></tr>`;
-          return;
-        }
-
-        actions.slice(0, 30).forEach(action => {
-          const row = document.createElement('tr');
-          row.className = 'border-t border-gray-800';
-          const incident = action.incident_id || action.incident || 'N/A';
-          const description = action.description || action.command || action.action || 'N/A';
-          const severity = (action.severity || 'unknown').toString().toUpperCase();
-          const status = (action.status || 'unknown').toString().toUpperCase();
-          const timestamp = action.timestamp || 'N/A';
-
-          row.innerHTML = `
-            <td class="px-4 py-3 align-top text-sm text-gray-200">${incident}</td>
-            <td class="px-4 py-3 align-top text-sm text-gray-200">${action.action || 'N/A'}</td>
-            <td class="px-4 py-3 align-top text-sm text-gray-200">${severity}</td>
-            <td class="px-4 py-3 align-top text-sm text-gray-200">${status}</td>
-            <td class="px-4 py-3 align-top text-sm text-gray-200">${description}</td>
-            <td class="px-4 py-3 align-top text-sm text-gray-200">${timestamp}</td>
-          `;
-          table.appendChild(row);
-        });
-      }
-
-      async function loadSummary() {
-        try {
-          const response = await fetch(summaryUrl, { cache: 'no-store' });
-          if (!response.ok) throw new Error('Failed to fetch summary');
-          const data = await response.json();
-
-          setText('card-total', data.total_actions);
-          setText('card-simulated', data.simulated);
-          setText('card-executed', data.executed);
-          setText('card-flagged', data.flagged);
-
-          severityChart.data.datasets[0].data = [data.critical, data.high, data.medium, data.low];
-          severityChart.update();
-          updateActionsTable(data.actions || []);
-        } catch (error) {
-          console.error('Summary error', error);
-        }
-      }
-
-      async function loadAudit() {
-        try {
-          const response = await fetch(auditUrl, { cache: 'no-store' });
-          if (!response.ok) throw new Error('Failed to fetch audit');
-          const lines = await response.json();
-          updateAuditLog(lines || []);
-        } catch (error) {
-          console.error('Audit error', error);
-          updateAuditLog(['Unable to load audit trail.']);
-        }
-      }
-
-      async function refreshDashboard() {
-        await Promise.all([loadSummary(), loadAudit()]);
-      }
-
-      refreshDashboard();
-      setInterval(refreshDashboard, refreshIntervalMs);
-    </script>
-  </body>
+renderShell();
+refreshAll();
+setInterval(refreshAll, 5000);
+</script>
+</body>
 </html>

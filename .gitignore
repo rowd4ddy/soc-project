@@ -17,3 +17,10 @@ src/output/incident_report_*.txt
 src/output/actions_taken_*.json
 src/output/admin_notifications.txt
 src/output/audit_trail.log
+src/output/report_*.json
+!src/output/.gitkeep
+
+# Incoming drag-and-drop files
+src/data/incoming/*
+!src/data/incoming/.gitkeep
+src/output/report_20260620-144132.json

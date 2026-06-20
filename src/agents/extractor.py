@@ -16,6 +16,7 @@ does its work, and returns an updated state dict.
 import os
 import re
 import json
+import glob
 import logging
 from datetime import datetime
 from typing import TypedDict
@@ -34,8 +35,10 @@ logger = logging.getLogger(__name__)
 OLLAMA_HOST = os.getenv("OLLAMA_HOST", "http://localhost:11434")
 MODEL = "qwen2.5:7b"
 
-# ── Log file path (mounted into the container via docker-compose volume) ──
-LOG_FILE = os.path.join(os.path.dirname(__file__), "..", "data", "sample_logs.log")
+# ── Log file paths ──────────────────────────────────────────────────────────
+DATA_DIR     = os.path.join(os.path.dirname(__file__), "..", "data")
+INCOMING_DIR = os.path.join(DATA_DIR, "incoming")
+DEFAULT_LOG_FILE = os.path.join(DATA_DIR, "sample_logs.log")
 
 # ── Keywords that flag a line as worth sending to the SLM ──
 RELEVANT_KEYWORDS = [
@@ -65,6 +68,33 @@ class PipelineState(TypedDict):
 
 
 # ── Helper functions ─────────────────────────────────────────────────────────
+
+def resolve_log_file() -> str:
+    """
+    Decide which log file to process.
+
+    Drag-and-drop workflow: any .log or .txt file placed in
+    src/data/incoming/ is picked up automatically — the newest file wins.
+    This lets you swap datasets (e.g. a teacher-provided log file) without
+    touching any code: just drop the file into that folder and re-run.
+
+    Falls back to the bundled sample_logs.log if incoming/ is empty.
+    """
+    os.makedirs(INCOMING_DIR, exist_ok=True)
+
+    candidates = (
+        glob.glob(os.path.join(INCOMING_DIR, "*.log"))
+        + glob.glob(os.path.join(INCOMING_DIR, "*.txt"))
+    )
+
+    if candidates:
+        newest = max(candidates, key=os.path.getmtime)
+        logger.info(f"Found dropped log file: {newest}")
+        return newest
+
+    logger.info("No files in data/incoming/ — using bundled sample_logs.log")
+    return DEFAULT_LOG_FILE
+
 
 def load_log_file(path: str) -> list[str]:
     """Read all lines from the log file, stripping blanks."""
@@ -188,7 +218,7 @@ def extractor_node(state: PipelineState) -> PipelineState:
     client = Client(host=OLLAMA_HOST)
 
     # Step 1: Load logs if not already in state
-    raw_lines = state.get("raw_lines") or load_log_file(LOG_FILE)
+    raw_lines = state.get("raw_lines") or load_log_file(resolve_log_file())
 
     # Step 2: Pre-filter to relevant lines only
     relevant_lines = pre_filter(raw_lines)
