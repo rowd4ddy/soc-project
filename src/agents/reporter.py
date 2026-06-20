@@ -43,9 +43,6 @@ OLLAMA_HOST  = os.getenv("OLLAMA_HOST", "http://localhost:11434")
 CHROMA_HOST  = os.getenv("CHROMA_HOST", "soc-chroma")
 MODEL        = "qwen2.5:7b"
 OUTPUT_DIR   = os.path.join(os.path.dirname(__file__), "..", "output")
-def get_output_file() -> str:
-    ts = datetime.now().strftime("%Y%m%d-%H%M%S")
-    return os.path.join(OUTPUT_DIR, f"incident_report_{ts}.txt")
 
 # Severity display helpers
 SEVERITY_EMOJI = {
@@ -383,15 +380,21 @@ def reporter_node(state: PipelineState) -> PipelineState:
     # Step 5: Assemble structured report
     report = assemble_report(confirmed, timeline, statistics, narratives, overall_threat)
 
-    # Step 6: Render to text and save file
+    # Step 6: Render to text and save both files (timestamped, never overwritten)
     os.makedirs(OUTPUT_DIR, exist_ok=True)
+    ts = datetime.now().strftime("%Y%m%d-%H%M%S")
+
+    text_file = os.path.join(OUTPUT_DIR, f"incident_report_{ts}.txt")
     report_text = render_report_text(report)
-
-    output_file = get_output_file()
-    with open(output_file, "w", encoding="utf-8") as f:
+    with open(text_file, "w", encoding="utf-8") as f:
         f.write(report_text)
+    logger.info(f"✅ Text report saved to {text_file}")
 
-    logger.info(f"✅ Report saved to {output_file}")
+    # JSON version — this is what the dashboard's /api/report endpoint reads
+    json_file = os.path.join(OUTPUT_DIR, f"report_{ts}.json")
+    with open(json_file, "w", encoding="utf-8") as f:
+        json.dump(report, f, indent=2, default=str)
+    logger.info(f"✅ JSON report saved to {json_file}")
 
     # Step 7: Write to shared memory for Agent 4
     memory.set("report", report)
@@ -423,9 +426,11 @@ if __name__ == "__main__":
     print("Running Reporter...")
     s3 = reporter_node(s2)
 
-    print(f"\n✅ Report saved to: {OUTPUT_FILE}")
+    import glob
+    latest_txt = max(glob.glob(os.path.join(OUTPUT_DIR, "incident_report_*.txt")), key=os.path.getmtime)
+    print(f"\n✅ Report saved to: {latest_txt}")
     print("\nFirst 30 lines of report:")
-    with open(OUTPUT_FILE) as f:
+    with open(latest_txt) as f:
         for i, line in enumerate(f):
             if i >= 30:
                 break

@@ -31,6 +31,14 @@ def get_latest_actions_file() -> str:
     return max(files, key=os.path.getmtime)
 
 
+def get_latest_report_file() -> str:
+    pattern = os.path.join(OUTPUT_DIR, "report_*.json")
+    files = glob.glob(pattern)
+    if not files:
+        raise FileNotFoundError("No report_*.json files found.")
+    return max(files, key=os.path.getmtime)
+
+
 def summarize_actions(actions: list[dict[str, Any]]) -> dict[str, int]:
     counts = {"critical": 0, "high": 0, "medium": 0, "low": 0}
     simulated = 0
@@ -105,3 +113,19 @@ async def api_audit() -> list[dict[str, Any]]:
             entries.append({"raw": line})
 
     return entries
+
+
+@app.get("/api/report")
+async def api_report() -> dict[str, Any]:
+    """
+    Returns the full latest incident report: executive summary, attack
+    timeline, per-incident narratives with MITRE mapping, statistics,
+    and prioritized recommendations. Produced by Agent 3 (Reporter).
+    """
+    try:
+        report_file = get_latest_report_file()
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
+
+    with open(report_file, "r", encoding="utf-8") as file:
+        return json.load(file)
