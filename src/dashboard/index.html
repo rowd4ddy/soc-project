@@ -62,6 +62,8 @@
     transition:all .15s; letter-spacing:.03em;
   }
   .btn:hover{border-color:var(--line-2); color:var(--txt);}
+  select.btn{padding:5px 8px; appearance:none; -webkit-appearance:none; background:var(--panel); color:var(--txt-dim);}
+  select.btn option{background:var(--panel); color:var(--txt);}
 
   .wrap{max-width:1280px; margin:0 auto; padding:24px 28px 60px;}
 
@@ -168,6 +170,9 @@
   .audit-line .msg{color:var(--txt-dim); word-break:break-word;}
   .audit-line-new{animation:feedIn .5s ease-out;}
   @keyframes feedIn{from{opacity:0; transform:translateY(-4px);} to{opacity:1; transform:translateY(0);}}
+
+  .fade-in{animation:fadeIn .35s ease-out;}
+  @keyframes fadeIn{from{opacity:0; transform:translateY(6px);} to{opacity:1; transform:translateY(0);}}
   .cursor{display:inline-block; width:7px; height:13px; background:var(--green); animation:blink 1s steps(1) infinite; vertical-align:-2px;}
 
   .empty{padding:60px 20px; text-align:center; color:var(--txt-faint);}
@@ -213,6 +218,27 @@
     color:var(--green); font-size:12px; margin-top:5px;
   }
 
+  .fb-prior{
+    font-size:11.5px; color:var(--txt-dim); background:var(--panel-2); border-radius:4px;
+    padding:6px 10px; margin-bottom:8px; display:flex; align-items:center; gap:8px;
+  }
+  .fb-prior-verdict{font-family:var(--mono); font-size:10px; font-weight:600; padding:1px 7px; border-radius:2px;}
+  .fb-prior-verdict.false_positive{background:var(--red-dim); color:var(--red);}
+  .fb-prior-verdict.true_positive{background:var(--green-dim); color:var(--green);}
+  .fb-actions{display:flex; gap:8px;}
+  .fb-btn{
+    font-family:var(--mono); font-size:11px; padding:6px 12px; border-radius:3px;
+    cursor:pointer; transition:all .15s; letter-spacing:.02em; background:transparent;
+  }
+  .fb-tp{border:1px solid var(--green-dim); color:var(--green);}
+  .fb-tp:hover{background:var(--green-dim);}
+  .fb-fp{border:1px solid var(--red-dim); color:var(--red);}
+  .fb-fp:hover{background:var(--red-dim);}
+  .fb-status{font-size:11.5px; color:var(--txt-faint); margin-top:8px;}
+  .fb-saved{font-family:var(--mono); font-size:11px; font-weight:600;}
+  .fb-saved.false_positive{color:var(--red);}
+  .fb-saved.true_positive{color:var(--green);}
+
   .rec-row{display:flex; align-items:center; gap:14px; padding:10px 16px; border-top:1px solid var(--line); font-size:12.5px;}
   .rec-row:first-child{border-top:none;}
   .rec-num{font-family:var(--mono); color:var(--txt-faint); width:18px; flex-shrink:0;}
@@ -233,8 +259,16 @@
       <span class="tab active" data-tab="ops">operations</span>
       <span class="tab" data-tab="report">incident report</span>
     </div>
-    <span class="live-pill"><span class="led"></span><span id="last-updated">auto-refresh 5s</span></span>
-    <button class="btn" id="refresh-btn" onclick="refreshAll()">↻ refresh now</button>
+    <span class="live-pill"><span class="led"></span><span id="last-updated">auto-refresh</span></span>
+    <select class="btn" id="interval-select" onchange="updateInterval()">
+      <option value="0">manual only</option>
+      <option value="5000">every 5s</option>
+      <option value="15000">every 15s</option>
+      <option value="30000" selected>every 30s</option>
+      <option value="60000">every 60s</option>
+    </select>
+    <button class="btn" id="refresh-btn" onclick="refreshAll()">↻ refresh</button>
+    <button class="btn" id="clear-btn" onclick="clearOutput()" style="color:var(--red); border-color:var(--red-dim);">⊘ clear output</button>
   </div>
 </div>
 
@@ -254,6 +288,7 @@
 <script>
 let activeFilter = 'all';
 let lastActions = [];
+let wasCleared = false;
 
 function esc(s){ return (s===undefined||s===null) ? '' : String(s).replace(/[&<>]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;'}[c])); }
 
@@ -493,12 +528,27 @@ async function refreshAll(){
   const btn = document.getElementById('refresh-btn');
   btn?.classList.add('pulsing');
 
+  // Snapshot wasCleared before any async ops — both branches need the same value
+  const justCleared = wasCleared;
+
   try{
     const summary = await fetchJSON('/api/summary');
     const audit = await fetchJSON('/api/audit').catch(() => []);
 
-    document.getElementById('report-id').textContent = `${summary.total_actions || 0} actions logged`;
+    // If the shell was replaced by an error state, rebuild it
+    if(!document.getElementById('k-total')) renderShell();
 
+    // First successful data load after a clear — fade the ops view in
+    if(justCleared){
+      const opsView = document.getElementById('view-ops');
+      opsView.classList.remove('fade-in');
+      void opsView.offsetWidth;
+      opsView.classList.add('fade-in');
+    }
+
+    wasCleared = false;
+
+    document.getElementById('report-id').textContent = `${summary.total_actions || 0} actions logged`;
     document.getElementById('k-total').textContent = summary.total_actions ?? 0;
     document.getElementById('k-sim').textContent = summary.simulated ?? 0;
     document.getElementById('k-exec').textContent = summary.executed ?? 0;
@@ -511,37 +561,48 @@ async function refreshAll(){
 
     renderActions();
 
-    // Detect new audit entries since last poll — feeds them in one at a time
-    // instead of snapping the whole list in, so it reads as a live stream.
     const newCount = (audit || []).length;
     const hasNew = newCount !== lastAuditCount;
     lastAuditCount = newCount;
     renderAudit(audit || [], hasNew);
-
-    document.getElementById('audit-count-sub').textContent =
-      `last ${Math.min(newCount,50)} events`;
+    document.getElementById('audit-count-sub').textContent = `last ${Math.min(newCount,50)} events`;
 
     setLastUpdated(true);
   }catch(e){
-    document.getElementById('view-ops').innerHTML = `
-      <div class="empty">
-        <div class="big">no pipeline output found</div>
-        <p style="margin-top:6px; font-size:12px;">run the pipeline first:</p>
-        <p style="margin-top:8px;"><code>docker exec soc-app python src/main.py --run</code></p>
-      </div>`;
+    // Only replace the shell with the error message on genuine first load.
+    // After an intentional clear (justCleared), keep the empty shell visible.
+    if(!justCleared){
+      document.getElementById('view-ops').innerHTML = `
+        <div class="empty">
+          <div class="big">no pipeline output found</div>
+          <p style="margin-top:6px; font-size:12px;">run the pipeline first:</p>
+          <p style="margin-top:8px;"><code>docker exec soc-app python src/main.py --run</code></p>
+        </div>`;
+    }
     setLastUpdated(false);
   }
 
   try{
     const report = await fetchJSON('/api/report');
     renderReport(report);
+    // Fade the report view in on first load after a clear
+    if(justCleared){
+      const rv = document.getElementById('view-report');
+      rv.classList.remove('fade-in');
+      void rv.offsetWidth;
+      rv.classList.add('fade-in');
+    }
   }catch(e){
-    document.getElementById('view-report').innerHTML = `
-      <div class="empty">
-        <div class="big">no incident report found</div>
-        <p style="margin-top:6px; font-size:12px;">run the pipeline first, then refresh:</p>
-        <p style="margin-top:8px;"><code>docker exec soc-app python src/main.py --run</code></p>
-      </div>`;
+    // Same logic — preserve the "output cleared" shell after an intentional clear.
+    // Only show the error message on genuine first load with no data.
+    if(!justCleared){
+      document.getElementById('view-report').innerHTML = `
+        <div class="empty">
+          <div class="big">no incident report found</div>
+          <p style="margin-top:6px; font-size:12px;">run the pipeline first, then refresh:</p>
+          <p style="margin-top:8px;"><code>docker exec soc-app python src/main.py --run</code></p>
+        </div>`;
+    }
   }
 
   setTimeout(() => btn?.classList.remove('pulsing'), 400);
@@ -559,11 +620,68 @@ function sevDotColor(sev){
   return {critical:'#EF4444', high:'#F0B429', medium:'#3B82F6', low:'#4ADE80'}[(sev||'low').toLowerCase()] || '#4ADE80';
 }
 
+let currentIncidents = [];
+
+function renderFeedbackBlock(inc, idx){
+  // Adaptive learning UI (pawn-test). Lets an analyst mark a confirmed
+  // incident as a true or false positive — stored via POST /api/feedback
+  // into the analyst_feedback ChromaDB collection, which the Analyzer
+  // queries on every subsequent run.
+  const existing = inc.analyst_feedback && inc.analyst_feedback.length
+    ? inc.analyst_feedback[0] : null;
+
+  const priorNote = existing
+    ? `<div class="fb-prior">Similar past incident reviewed: <span class="fb-prior-verdict ${existing.verdict}">${existing.verdict === 'false_positive' ? 'FALSE POSITIVE' : 'TRUE POSITIVE'}</span></div>`
+    : '';
+
+  return `
+    <div class="lbl">Adaptive learning feedback</div>
+    ${priorNote}
+    <div class="fb-actions" id="fb-actions-${idx}">
+      <button class="fb-btn fb-tp" onclick="submitFeedback(${idx}, 'true_positive')">&#10003; confirm true positive</button>
+      <button class="fb-btn fb-fp" onclick="submitFeedback(${idx}, 'false_positive')">&#10005; mark false positive</button>
+    </div>
+    <div class="fb-status" id="fb-status-${idx}"></div>
+  `;
+}
+
+async function submitFeedback(idx, verdict){
+  const inc = currentIncidents[idx];
+  if(!inc) return;
+
+  const statusEl = document.getElementById(`fb-status-${idx}`);
+  const actionsEl = document.getElementById(`fb-actions-${idx}`);
+  statusEl.textContent = 'saving...';
+
+  try{
+    const res = await fetch('/api/feedback', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({
+        incident_id: inc.incident_id,
+        combined_summary: inc.combined_summary || `${inc.event_type||''} from ${inc.source_ip||'unknown'}: ${inc.explanation||''}`,
+        attack_name: inc.attack_name || inc.event_type || 'unknown',
+        mitre_technique_id: inc.mitre_technique_id || 'unknown',
+        verdict: verdict,
+      }),
+    });
+    if(!res.ok) throw new Error('save failed');
+
+    actionsEl.style.display = 'none';
+    statusEl.innerHTML = `<span class="fb-saved ${verdict}">${verdict === 'false_positive' ? '\u2715 marked false positive' : '\u2713 confirmed true positive'}</span> — will inform future analysis`;
+    refreshFeedbackCount();
+  }catch(e){
+    statusEl.textContent = 'failed to save — try again';
+  }
+}
+
 function renderReport(report){
   const es   = report.executive_summary || {};
   const incs = report.incidents || [];
   const tl   = report.timeline || [];
   const recs = report.recommendations || [];
+
+  currentIncidents = incs;
 
   const tlHtml = tl.length ? tl.slice(0, 20).map(e => `
     <div class="tl-item" style="--dot:${sevDotColor(e.severity)}">
@@ -594,6 +712,7 @@ function renderReport(report){
         <div>${esc(inc.narrative || inc.explanation || 'No narrative available.')}</div>
         <div class="lbl">Recommended action</div>
         <div class="action-box">${esc(inc.recommended_action || 'Manual investigation required.')}</div>
+        ${renderFeedbackBlock(inc, i)}
       </div>
     </div>`).join('') : `<div style="color:var(--txt-faint); font-size:12px;">no confirmed incidents</div>`;
 
@@ -606,7 +725,7 @@ function renderReport(report){
     </div>`).join('') : `<div style="color:var(--txt-faint); font-size:12px; padding:14px 16px;">no recommendations</div>`;
 
   document.getElementById('view-report').innerHTML = `
-    <div class="exec-grid">
+    <div class="exec-grid" style="grid-template-columns:repeat(5,1fr);">
       <div class="exec-cell">
         <div class="exec-label">Threat level</div>
         <div class="exec-val">${badge(es.threat_level)}</div>
@@ -622,6 +741,10 @@ function renderReport(report){
       <div class="exec-cell">
         <div class="exec-label">Top attacker</div>
         <div class="exec-val mono">${esc(es.top_source_ip||'unknown')}</div>
+      </div>
+      <div class="exec-cell">
+        <div class="exec-label">Analyst feedback</div>
+        <div class="exec-val mono" id="fb-count">&hellip;</div>
       </div>
     </div>
 
@@ -655,6 +778,19 @@ function renderReport(report){
       }
     });
   });
+
+  refreshFeedbackCount();
+}
+
+async function refreshFeedbackCount(){
+  const el = document.getElementById('fb-count');
+  if(!el) return;
+  try{
+    const r = await fetchJSON('/api/feedback/count');
+    el.textContent = r.count ?? 0;
+  }catch(e){
+    el.textContent = '0';
+  }
 }
 
 document.querySelectorAll('.tab').forEach(tab => {
@@ -668,7 +804,60 @@ document.querySelectorAll('.tab').forEach(tab => {
 
 renderShell();
 refreshAll();
-setInterval(refreshAll, 5000);
+
+let _intervalHandle = null;
+
+function updateInterval(){
+  const sel = document.getElementById('interval-select');
+  const ms = parseInt(sel.value, 10);
+  if(_intervalHandle){ clearInterval(_intervalHandle); _intervalHandle = null; }
+  if(ms > 0){ _intervalHandle = setInterval(refreshAll, ms); }
+  const el = document.getElementById('last-updated');
+  if(el && ms === 0) el.textContent = 'manual refresh';
+}
+
+async function clearOutput(){
+  const btn = document.getElementById('clear-btn');
+  btn.textContent = 'clearing...';
+  try{
+    const r = await fetch('/api/clear', {method:'DELETE'});
+    if(!r.ok) throw new Error('clear failed');
+
+    // Reset state
+    lastActions = [];
+    lastAuditCount = 0;
+    wasCleared = true;
+
+    // Rebuild the ops shell from scratch so all element IDs exist again
+    // and refreshAll() can update them normally on the next poll/click
+    renderShell();
+
+    // Reset the report tab to its empty state
+    document.getElementById('view-report').innerHTML = `
+      <div class="empty">
+        <div class="big">output cleared</div>
+        <p style="margin-top:6px; font-size:12px;">run the pipeline to generate a new report</p>
+      </div>`;
+
+    document.getElementById('report-id').textContent = 'output cleared';
+    setLastUpdated(true);
+
+    // Re-arm the interval
+    updateInterval();
+    // Switch to ops tab so the empty shell is immediately visible
+    document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+    document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
+    document.querySelector('.tab[data-tab="ops"]').classList.add('active');
+    document.getElementById('view-ops').classList.add('active');
+
+  }catch(e){
+    alert('Clear failed — check the dashboard container logs.');
+  }
+  btn.textContent = '\u2298 clear output';
+}
+
+// Start with the default selected interval (30s)
+updateInterval();
 </script>
 </body>
 </html>

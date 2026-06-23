@@ -2,7 +2,9 @@ FROM python:3.11-slim
 
 WORKDIR /app/src/dashboard
 
-RUN pip install --no-cache-dir fastapi uvicorn
+ENV PYTHONDONTWRITEBYTECODE=1
+
+RUN pip install --no-cache-dir fastapi uvicorn pydantic "chromadb==0.5.5"
 
 COPY main.py index.html ./
 

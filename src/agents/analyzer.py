@@ -26,6 +26,7 @@ from ollama import Client
 
 from shared.memory import memory
 from rag.mitre_loader import load_mitre_knowledge_base, query_techniques
+from rag.feedback_loader import get_feedback_collection, query_feedback
 from agents.extractor import PipelineState
 
 logging.basicConfig(
@@ -133,6 +134,35 @@ def enrich_with_mitre(incidents: list[dict], collection) -> list[dict]:
     return incidents
 
 
+# ── Step 2b: Adaptive learning — Retrieve matching analyst feedback ───────────
+#
+# Same RAG pattern as enrich_with_mitre() above, querying a different
+# collection. Returns nothing (incident["analyst_feedback"] = []) until
+# the first verdict has been submitted via the dashboard — this is a
+# strict addition, never a regression of existing behavior.
+
+def enrich_with_feedback(incidents: list[dict], feedback_collection) -> list[dict]:
+    """
+    For each incident, query the analyst_feedback collection for semantically
+    similar past incidents that an analyst already reviewed and verdicted.
+    Adds an 'analyst_feedback' list to each incident dict (possibly empty).
+    """
+    for incident in incidents:
+        query_text = incident["combined_summary"]
+
+        feedback = query_feedback(feedback_collection, query_text, n_results=2)
+        incident["analyst_feedback"] = feedback
+
+        if feedback:
+            top = feedback[0]
+            logger.info(
+                f"  [{incident['incident_id']}] feedback match → "
+                f"{top['verdict']} on {top['attack_name']} (relevance: {top['relevance']})"
+            )
+
+    return incidents
+
+
 # ── Step 3: SLM Analysis ──────────────────────────────────────────────────────
 #
 # Now that each incident has ATT&CK context from RAG, we send it to the SLM
@@ -143,11 +173,31 @@ def build_analysis_prompt(incident: dict) -> str:
     """
     Build the prompt for a single incident analysis.
     The MITRE techniques retrieved via RAG are injected as context.
+    Analyst feedback on similar past incidents (if any) is injected too —
+    this is the adaptive learning mechanism: confirmed false positives on
+    similar incidents nudge the model toward lower confidence here.
     """
     # Format the ATT&CK context block
     mitre_context = ""
     for t in incident.get("mitre_techniques", []):
         mitre_context += f"\n- {t['id']} ({t['name']}): {t['description'][:200]}..."
+
+    # Format the analyst feedback context block (empty until first verdict exists)
+    feedback_context = ""
+    for f in incident.get("analyst_feedback", []):
+        verdict_label = "FALSE POSITIVE" if f["verdict"] == "false_positive" else "confirmed true positive"
+        note = f" Analyst note: {f['analyst_note']}" if f.get("analyst_note") else ""
+        feedback_context += (
+            f"\n- A similar past incident ({f['attack_name']}, {f['mitre_technique_id']}) "
+            f"was reviewed by an analyst and marked as a {verdict_label}.{note}"
+        )
+
+    feedback_block = ""
+    if feedback_context:
+        feedback_block = f"""
+ANALYST FEEDBACK ON SIMILAR PAST INCIDENTS (weigh this in your confidence assessment):
+{feedback_context}
+"""
 
     return f"""You are a SOC analyst. Analyze this security incident and return ONLY valid JSON.
 
@@ -160,7 +210,7 @@ INCIDENT DETAILS:
 
 RELEVANT MITRE ATT&CK TECHNIQUES (retrieved from knowledge base):
 {mitre_context}
-
+{feedback_block}
 Analyze this incident and return ONLY this JSON structure:
 {{
   "confirmed_attack": true or false,
@@ -217,7 +267,9 @@ def analyze_incident(client: Client, incident: dict) -> dict:
         "source_ip":           incident["source_ip"],
         "event_count":         incident["event_count"],
         "timestamps":          incident["timestamps"],
+        "combined_summary":    incident["combined_summary"],
         "mitre_techniques":    incident.get("mitre_techniques", []),
+        "analyst_feedback":    incident.get("analyst_feedback", []),
         **slm_result,
     }
 
@@ -264,12 +316,21 @@ def analyzer_node(state: PipelineState) -> PipelineState:
     logger.info("Loading MITRE ATT&CK knowledge base into ChromaDB...")
     collection = load_mitre_knowledge_base(chroma_host=CHROMA_HOST)
 
+    # Step 2b: Get (or create) the analyst feedback collection — adaptive learning.
+    # Starts empty; populated incrementally as analysts review incidents via
+    # the dashboard. Safe no-op on every run until the first verdict exists.
+    feedback_collection = get_feedback_collection(chroma_host=CHROMA_HOST)
+
     # Step 3: Correlate events into incidents
     incidents = correlate_events(events)
 
     # Step 4: Enrich each incident with RAG-retrieved ATT&CK techniques
     logger.info("Querying ChromaDB for relevant MITRE ATT&CK techniques...")
     incidents = enrich_with_mitre(incidents, collection)
+
+    # Step 4b: Enrich each incident with matching analyst feedback, if any
+    logger.info("Querying analyst feedback collection for similar past incidents...")
+    incidents = enrich_with_feedback(incidents, feedback_collection)
 
     # Step 5: SLM analysis for each incident
     logger.info(f"Sending {len(incidents)} incidents to SLM for analysis...")

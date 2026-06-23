@@ -1,16 +1,31 @@
 import glob
 import json
 import os
-from typing import Any
+import sys
+from typing import Any, Optional
 
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
+from pydantic import BaseModel
+
+# Allow importing the rag/ package shared with the main pipeline — the
+# dashboard container mounts the same ./src folder, so src/rag is a sibling
+# of src/dashboard at runtime.
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
+try:
+    from rag.feedback_loader import get_feedback_collection, add_feedback
+    FEEDBACK_ENABLED = True
+except ImportError:
+    FEEDBACK_ENABLED = False
+    def get_feedback_collection(**kwargs): return None
+    def add_feedback(**kwargs): return {}
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 INDEX_FILE = os.path.join(HERE, "index.html")
 OUTPUT_DIR = os.path.abspath(os.path.join(HERE, "..", "output"))
 AUDIT_FILE = os.path.join(OUTPUT_DIR, "audit_trail.log")
+CHROMA_HOST = os.getenv("CHROMA_HOST", "soc-chroma")
 
 app = FastAPI(title="SOC Dashboard API")
 
@@ -21,6 +36,15 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+class FeedbackRequest(BaseModel):
+    incident_id: str
+    combined_summary: str
+    attack_name: str
+    mitre_technique_id: str
+    verdict: str  # "true_positive" or "false_positive"
+    analyst_note: Optional[str] = ""
 
 
 def get_latest_actions_file() -> str:
@@ -129,3 +153,69 @@ async def api_report() -> dict[str, Any]:
 
     with open(report_file, "r", encoding="utf-8") as file:
         return json.load(file)
+
+
+@app.post("/api/feedback")
+async def api_submit_feedback(body: FeedbackRequest) -> dict[str, Any]:
+    if not FEEDBACK_ENABLED:
+        raise HTTPException(status_code=503, detail="Adaptive learning not available — check feedback_loader.py")
+    if body.verdict not in ("true_positive", "false_positive"):
+        raise HTTPException(status_code=400, detail="verdict must be 'true_positive' or 'false_positive'")
+    try:
+        collection = get_feedback_collection(chroma_host=CHROMA_HOST)
+        result = add_feedback(
+            collection=collection,
+            incident_id=body.incident_id,
+            combined_summary=body.combined_summary,
+            attack_name=body.attack_name,
+            mitre_technique_id=body.mitre_technique_id,
+            verdict=body.verdict,
+            analyst_note=body.analyst_note or "",
+        )
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"Failed to store feedback: {exc}")
+    return {"status": "stored", **result}
+
+
+@app.get("/api/feedback/count")
+async def api_feedback_count() -> dict[str, int]:
+    if not FEEDBACK_ENABLED:
+        return {"count": 0}
+    try:
+        collection = get_feedback_collection(chroma_host=CHROMA_HOST)
+        return {"count": collection.count()}
+    except Exception:
+        return {"count": 0}
+
+
+@app.delete("/api/clear")
+async def api_clear_output() -> dict[str, Any]:
+    """
+    Delete all generated pipeline output files from src/output/ so the
+    dashboard shows a clean slate before the next demo run.
+
+    This only touches files in src/output/ — it does NOT affect:
+      - ChromaDB data (MITRE, playbooks, analyst_feedback collections)
+      - The pipeline code or configuration
+      - Any Docker volumes
+
+    Safe to call at any time; the pipeline regenerates everything on the
+    next run. Exists specifically so the demo starts from a visually
+    clean state without needing to manually delete files.
+    """
+    patterns = [
+        "report_*.json",
+        "incident_report_*.txt",
+        "actions_taken_*.json",
+        "audit_trail.log",
+        "admin_notifications.txt",
+    ]
+    deleted = []
+    for pattern in patterns:
+        for path in glob.glob(os.path.join(OUTPUT_DIR, pattern)):
+            try:
+                os.remove(path)
+                deleted.append(os.path.basename(path))
+            except OSError:
+                pass
+    return {"status": "cleared", "deleted": deleted, "count": len(deleted)}
