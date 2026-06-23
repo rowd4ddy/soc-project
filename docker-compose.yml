@@ -46,6 +46,7 @@ services:
       - "8080:8080"
     volumes:
       - ./src:/app/src
+      - onnx-cache:/root/.cache/chroma
     depends_on:
       - app
     restart: unless-stopped
