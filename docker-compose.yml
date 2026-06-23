@@ -24,6 +24,8 @@ services:
     environment:
       - OLLAMA_HOST=http://ollama:11434
       - CHROMA_HOST=soc-chroma
+      # ELK_MODE and ES_HOST are NOT set here — pass them at runtime:
+      # docker exec -e ELK_MODE=true soc-app python src/main.py --run
     depends_on:
       - ollama
       - chromadb
@@ -47,11 +49,64 @@ services:
     volumes:
       - ./src:/app/src
       - onnx-cache:/root/.cache/chroma
+    environment:
+      - CHROMA_HOST=soc-chroma
     depends_on:
       - app
+    restart: unless-stopped
+
+  # ── ELK Integration (optional bonus) ───────────────────────────────────────
+  # Only starts when explicitly requested — never affects the baseline:
+  #   docker compose --profile elk up -d
+  #
+  # After starting, ingest logs once:
+  #   docker exec soc-app python src/rag/elk_ingest.py
+  #
+  # Then run the pipeline in ELK mode:
+  #   docker exec -e ELK_MODE=true soc-app python src/main.py --run
+  #
+  # To stop ELK without touching anything else:
+  #   docker compose --profile elk down
+  #   (baseline containers keep running)
+  soc-elasticsearch:
+    image: elasticsearch:8.13.0
+    container_name: soc-elasticsearch
+    profiles:
+      - elk
+    environment:
+      - discovery.type=single-node
+      - xpack.security.enabled=false
+      - xpack.security.http.ssl.enabled=false
+      - ES_JAVA_OPTS=-Xms512m -Xmx512m
+    ports:
+      - "9200:9200"
+    volumes:
+      - es-data:/usr/share/elasticsearch/data
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:9200/_cluster/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 30s
+    restart: unless-stopped
+
+  soc-kibana:
+    image: kibana:8.13.0
+    container_name: soc-kibana
+    profiles:
+      - elk
+    environment:
+      - ELASTICSEARCH_HOSTS=http://soc-elasticsearch:9200
+      - TELEMETRY_ENABLED=false
+    ports:
+      - "5601:5601"
+    depends_on:
+      soc-elasticsearch:
+        condition: service_healthy
     restart: unless-stopped
 
 volumes:
   ollama-models:
   chroma-data:
   onnx-cache:
+  es-data:    # Elasticsearch index storage — isolated, wipe with: docker volume rm soc-project_es-data
