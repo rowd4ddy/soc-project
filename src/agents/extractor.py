@@ -69,9 +69,85 @@ class PipelineState(TypedDict):
 
 # ── Helper functions ─────────────────────────────────────────────────────────
 
-def resolve_log_file() -> str:
+LIVE_MODE    = os.getenv("LIVE_MODE", "false").lower() == "true"
+ELK_MODE     = os.getenv("ELK_MODE",  "false").lower() == "true"
+ES_HOST      = os.getenv("ES_HOST",   "http://soc-elasticsearch:9200")
+ES_INDEX     = os.getenv("ES_INDEX",  "soc-logs")
+
+VICTIM_LOGS  = [
+    "/victim-logs/auth.log",
+    "/victim-logs/nginx/access.log",
+    "/victim-logs/nginx/error.log",
+]
+
+
+def read_from_elasticsearch(tail_lines: int = 200) -> list[str]:
     """
-    Decide which log file to process.
+    Query the most recent log entries from Elasticsearch instead of
+    reading a static file.
+
+    Only used when ELK_MODE=true. Requires:
+      - soc-elasticsearch container running (see docker-compose.yml)
+      - Logs already ingested via src/rag/elk_ingest.py
+
+    Returns the same list[str] format as load_log_file() so the rest
+    of the pipeline is completely unchanged.
+    """
+    import httpx
+    try:
+        response = httpx.post(
+            f"{ES_HOST}/{ES_INDEX}/_search",
+            json={
+                "size": tail_lines,
+                "sort": [{"@timestamp": {"order": "desc"}}],
+                "_source": ["message", "original"],
+                "query": {"match_all": {}},
+            },
+            timeout=10.0,
+        )
+        response.raise_for_status()
+        hits = response.json().get("hits", {}).get("hits", [])
+        lines = []
+        for hit in hits:
+            src = hit.get("_source", {})
+            # prefer "original" (raw line) over "message" (parsed field)
+            line = src.get("original") or src.get("message") or ""
+            if line.strip():
+                lines.append(line.strip())
+        # results came back newest-first — reverse to get chronological order
+        lines.reverse()
+        logger.info(f"Read {len(lines)} lines from Elasticsearch index '{ES_INDEX}'")
+        return lines
+    except Exception as e:
+        logger.error(f"Elasticsearch query failed: {e} — falling back to sample_logs.log")
+        return load_log_file(DEFAULT_LOG_FILE)
+
+
+def read_live_victim_logs(tail_lines: int = 200) -> list[str]:
+    """
+    Read the most recent lines from the live victim container's log files.
+
+    Only used when LIVE_MODE=true (sandbox stack). The victim's log
+    directory is mounted read-only into this container at /victim-logs
+    via the sandbox docker-compose.yml. This is a snapshot read each
+    pipeline run, not a continuous stream — simple and good enough for
+    a per-run detection pass.
+    """
+    lines: list[str] = []
+    for path in VICTIM_LOGS:
+        if not os.path.exists(path):
+            continue
+        with open(path, "r", encoding="utf-8", errors="ignore") as f:
+            file_lines = [l.strip() for l in f.readlines() if l.strip()]
+        recent = file_lines[-tail_lines:]
+        lines.extend(recent)
+        logger.info(f"Read {len(recent)} live lines from {path}")
+    return lines
+
+
+def resolve_log_file() -> str | None:
+    """
+    Decide which log file to process when NOT in live mode.
 
     Drag-and-drop workflow: any .log or .txt file placed in
     src/data/incoming/ is picked up automatically — the newest file wins.
@@ -79,6 +155,7 @@ def resolve_log_file() -> str:
     touching any code: just drop the file into that folder and re-run.
 
     Falls back to the bundled sample_logs.log if incoming/ is empty.
+    Returns None if LIVE_MODE is on — caller should use read_live_victim_logs() instead.
     """
     os.makedirs(INCOMING_DIR, exist_ok=True)
 
@@ -218,7 +295,16 @@ def extractor_node(state: PipelineState) -> PipelineState:
     client = Client(host=OLLAMA_HOST)
 
     # Step 1: Load logs if not already in state
-    raw_lines = state.get("raw_lines") or load_log_file(resolve_log_file())
+    if state.get("raw_lines"):
+        raw_lines = state["raw_lines"]
+    elif LIVE_MODE:
+        logger.info("LIVE_MODE active — reading from soc-victim-sandbox logs")
+        raw_lines = read_live_victim_logs()
+    elif ELK_MODE:
+        logger.info(f"ELK_MODE active — querying Elasticsearch at {ES_HOST}/{ES_INDEX}")
+        raw_lines = read_from_elasticsearch()
+    else:
+        raw_lines = load_log_file(resolve_log_file())
 
     # Step 2: Pre-filter to relevant lines only
     relevant_lines = pre_filter(raw_lines)
