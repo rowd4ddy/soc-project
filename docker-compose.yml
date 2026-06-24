@@ -21,11 +21,12 @@ services:
     volumes:
       - ./src:/app/src
       - onnx-cache:/root/.cache/chroma
+      - victim-logs:/victim-logs:ro                      # sandbox: Extractor reads victim logs
+      - /var/run/docker.sock:/var/run/docker.sock        # sandbox: Executor runs real actions
     environment:
       - OLLAMA_HOST=http://ollama:11434
       - CHROMA_HOST=soc-chroma
-      # ELK_MODE and ES_HOST are NOT set here — pass them at runtime:
-      # docker exec -e ELK_MODE=true soc-app python src/main.py --run
+      - VICTIM_CONTAINER=soc-victim
     depends_on:
       - ollama
       - chromadb
@@ -105,8 +106,67 @@ services:
         condition: service_healthy
     restart: unless-stopped
 
+  # ── Sandbox profile (live victim + attacker) ────────────────────────────────
+  # Only starts when explicitly requested:
+  #   docker compose --profile sandbox up -d
+  #
+  # Run the pipeline in live mode against the victim:
+  #   docker exec -e LIVE_MODE=true -e EXECUTOR_LIVE_MODE=true soc-app python src/main.py --run
+  #
+  # Trigger attacks on demand for the demo:
+  #   docker exec soc-attacker python3 -c "import generate_traffic as g; g.ssh_brute_force()"
+  #
+  # ELK + sandbox combined (Kibana shows live attack traffic):
+  #   docker compose --profile elk --profile sandbox up -d
+  soc-victim:
+    build:
+      context: ./src/sandbox/victim
+    container_name: soc-victim
+    hostname: victim
+    profiles:
+      - sandbox
+    cap_add:
+      - NET_ADMIN       # lets Agent 4 run real iptables rules inside this container
+    volumes:
+      - victim-logs:/var/log    # shared with soc-app (read) and shipper (read)
+    restart: unless-stopped
+
+  soc-attacker:
+    build:
+      context: ./src/sandbox/attacker
+    container_name: soc-attacker
+    profiles:
+      - sandbox
+    environment:
+      - VICTIM_HOST=soc-victim
+      - SLEEP_SECONDS=90
+    depends_on:
+      - soc-victim
+    restart: unless-stopped
+
+  # ── ELK live shipper (sandbox + elk combined) ───────────────────────────────
+  # Tails the victim's live logs and ships new lines to Elasticsearch in
+  # real time so Kibana shows live attack traffic as it happens.
+  # Only meaningful when both profiles are active:
+  #   docker compose --profile elk --profile sandbox up -d
+  soc-log-shipper:
+    build: .
+    container_name: soc-log-shipper
+    profiles:
+      - sandbox
+    volumes:
+      - ./src:/app/src
+      - victim-logs:/victim-logs:ro    # reads victim logs
+    environment:
+      - ES_HOST=http://soc-elasticsearch:9200
+      - ES_INDEX=soc-logs-live
+      - SHIP_INTERVAL=3
+    command: ["python", "-u", "src/rag/elk_live_shipper.py"]
+    restart: unless-stopped
+
 volumes:
   ollama-models:
   chroma-data:
   onnx-cache:
-  es-data:    # Elasticsearch index storage — isolated, wipe with: docker volume rm soc-project_es-data
+  es-data:
+  victim-logs:    # shared between soc-victim (write) and soc-app/soc-log-shipper (read)
