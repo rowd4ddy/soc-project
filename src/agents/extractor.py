@@ -41,10 +41,21 @@ INCOMING_DIR = os.path.join(DATA_DIR, "incoming")
 DEFAULT_LOG_FILE = os.path.join(DATA_DIR, "sample_logs.log")
 
 # ── Keywords that flag a line as worth sending to the SLM ──
+# Covers both the static sample_logs.log format AND live victim container
+# log formats (syslog timestamps, nginx access logs with SQL payloads,
+# sshd failed login messages from real brute force attempts).
 RELEVANT_KEYWORDS = [
-    "failed", "invalid", "denied", "blocked", "error",
-    "critical", "warning", "attack", "flood", "rootkit",
-    "execve", "union", "select", "drop table", "c2",
+    # Auth / SSH patterns (sshd in victim container)
+    "failed", "invalid", "invalid user", "authentication failure",
+    "connection closed", "disconnected",
+    # Web attack patterns (nginx access log)
+    "union", "select", "drop table", "or '1'='1", "script>",
+    "../", "etc/passwd", "cmd=", "exec(",
+    # System / security patterns
+    "denied", "blocked", "error", "critical", "warning",
+    "attack", "flood", "rootkit", "execve", "c2",
+    # Nginx error patterns
+    "forbidden", "404", "400", "500",
 ]
 
 # ── Severity mapping from log level words ──
